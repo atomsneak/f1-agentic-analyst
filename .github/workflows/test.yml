@@ -65,7 +65,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # 22 is the active LTS. The suites themselves are version-independent
+          # now: they pass the browser globals they need into the sandbox
+          # instead of inheriting Node's (see tests/ui_test.js, `navigator`).
+          node-version: "22"
 
       # No `npm install`: there is no package.json and none should be added.
       # Both suites below use only Node built-ins (assert, fs, path) plus a

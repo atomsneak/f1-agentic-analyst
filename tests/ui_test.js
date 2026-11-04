@@ -75,7 +75,7 @@ const raf = (f) => f();
 function shellF1() {
   const src = read("static/shell.js");
   const win = {};
-  new Function("location", "document", "window", src)(
+  new Function("location", "document", "window", "navigator", src)(
     { pathname: "/", protocol: "http:", hostname: "h" },
     /* `getElementById` is part of the surface now: shell.js's AI settings panel
      * looks up its dialog that way (an id lookup, not a selector). Without it
@@ -85,7 +85,15 @@ function shellF1() {
      * its first line, which is the real behaviour on a page with no dialog. */
     { readyState: "complete", querySelectorAll: () => [],
       querySelector: () => null, getElementById: () => null, addEventListener() {} },
-    win);
+    win,
+    /* `navigator` is now passed in explicitly rather than picked up as a Node
+     * global. Node 21+ defines one, Node 20 (what CI runs) does not -- so the
+     * suite passed locally and failed in Actions with
+     * `ReferenceError: navigator is not defined` on shell.js's
+     * serviceWorker guard. A browser stub should supply the browser globals it
+     * needs; inheriting the runtime's is how a test becomes version-dependent.
+     * No serviceWorker property here, so registerSW() bails on its first line. */
+    {});
   return win.F1;
 }
 
@@ -237,11 +245,11 @@ async function fetchJson() {
 
   function load(fetchImpl) {
     const win = {};
-    new Function("location", "document", "window", "fetch", src)(
+    new Function("location", "document", "window", "fetch", "navigator", src)(
       { pathname: "/", protocol: "http:", hostname: "h" },
       { readyState: "complete", querySelectorAll: () => [],
         querySelector: () => null, getElementById: () => null, addEventListener() {} },
-      win, fetchImpl);
+      win, fetchImpl, {});
     return win.F1;
   }
   const resp = (body, { ok = true, status = 200, statusText = "OK" } = {}) => Promise.resolve({
@@ -344,12 +352,12 @@ async function nav() {
       getAttribute(k) { return k === "data-port" ? this._p : null; },
     }));
     const win = {};
-    new Function("location", "document", "window", src)(
+    new Function("location", "document", "window", "navigator", src)(
       { pathname, protocol, hostname },
       { readyState: "complete", querySelector: () => null,
         querySelectorAll: (s) => (s === "a[data-port]" ? links : []),
         getElementById: () => null, addEventListener() {} },
-      win);
+      win, {});
     return links.map((l) => l.href);
   }
 
