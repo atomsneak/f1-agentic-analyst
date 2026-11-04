@@ -1,0 +1,86 @@
+# CI for F1 Agentic Analyst.
+#
+# Two independent jobs, because the two test suites have nothing in common:
+# the Python side is a plain stdlib `unittest` run, the JS side is a set of
+# Node scripts with a hand-rolled DOM mock. Neither needs a network, a
+# database, a running server, npm, or a browser — with the two exceptions
+# explained inline below.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push on the same ref makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # The code uses modern (PEP 585/604) type syntax, so 3.10 is the
+          # floor; 3.12 is pinned so CI stays reproducible and warnings-free.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        # 190 tests covering points, scope, sectors, penalties, weekend logic,
+        # streaming, config and PWA helpers. Pure stdlib unittest, no network.
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      # tests/smoke_real_db.py is deliberately NOT part of the unittest
+      # discovery above (it is named smoke_*.py, not test_*.py) because it
+      # validates the real ~48 MB archive database under data/, which is
+      # gitignored and therefore absent in CI. Running it unconditionally
+      # would fail every build for a reason that has nothing to do with the
+      # code. It still runs here when a developer/vendor drops a real database
+      # into the workspace (e.g. a future cached dataset step), so its
+      # coverage is not silently lost.
+      - name: Smoke test against the real archive database (only if present)
+        if: hashFiles('data/f1dash.db') != ''
+        run: python tests/smoke_real_db.py
+
+  javascript:
+    name: JS tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No `npm install`: there is no package.json and none should be added.
+      # Both suites below use only Node built-ins (assert, fs, path) plus a
+      # hand-rolled DOM mock, so setup-node is all the environment they need.
+
+      - name: Run UI logic tests (78 checks)
+        run: node tests/ui_test.js
+
+      - name: Run welcome flow tests (19 checks)
+        run: node tests/welcome_test.js
+
+      # Not invoked here on purpose:
+      #   tests/layout_test.js and tests/pwa_test.js assert against real
+      #   rendering (computed CSS, flex sizing, transform percentages, service
+      #   worker behaviour) and need a real headless Chrome binary plus a live
+      #   server. They self-skip when the binary or server is missing, but
+      #   listing them explicitly would invite a green-looking run that tested
+      #   nothing. They stay a local, manual check.
