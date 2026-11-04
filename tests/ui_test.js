@@ -10,7 +10,7 @@
  * Sınanan şeyler, her biri geçmişte gerçekten kırılmış olduğu için:
  *
  * 1. Mobil panel aç/kapa (sheetSet) ve tutamak önizlemesi.
- * 2. Klavye yüksekliği telafisi (Android telefon'da panel klavyenin
+ * 2. Klavye yüksekliği telafisi (gerçek bir Android telefonda panel klavyenin
  *    arkasında kalıyordu).
  * 3. fetchJSON: HTML gövdesi hata mesajına SIZMAMALI (vekil 502'si
  *    sohbete `<!DOCTYPE html>` olarak düşüyordu).
@@ -185,7 +185,7 @@ async function sheetArchive() {
 // --------------------------------------------------------- 3. klavye telafisi
 
 async function keyboard() {
-  section("3. klavye telafisi (Android telefon)");
+  section("3. klavye telafisi (Android)");
   const html = read("index.html");
   const src = slice(html, "function bindKeyboard(){", "\n(function bindGripGesture");
 
@@ -212,7 +212,7 @@ async function keyboard() {
     if (p.style.bottom) throw new Error("boş değil: " + p.style.bottom);
   });
   await t("klavye açılınca panel yukarı itilir", () => {
-    // Android telefon: innerHeight ~873, Android klavyesi açık ~508 -> klavye ~365px
+    // Ölçülen bir Android telefonda: innerHeight ~873, klavye açık ~508 -> ~365px
     const p = run(508, 873, true);
     const b = parseInt(p.style.bottom, 10);
     if (!(b >= 300 && b <= 400)) throw new Error("beklenmeyen: " + p.style.bottom);

@@ -5,7 +5,7 @@
 <!-- interactive-widget=resizes-content: Android klavyesi açılınca görünür alanı KÜÇÜLT,
      klavyenin altına gizlemek yerine. Varsayılan (overlays-content) klavyeyi
      sayfanın üstüne bindirir; alt panel `bottom:0` ile konumlandığı için panel
-     tam olarak klavyenin arkasında kalır -- Android telefon'da görülen buydu.
+     tam olarak klavyenin arkasında kalır -- gerçek bir telefonda görülen buydu.
      resizes-content ile layout viewport kısalıyor, `bottom:0` klavyenin
      üstüne oturuyor. Desteklemeyen tarayıcı bu anahtarı yok sayar, JS tarafı
      (visualViewport) yedek olarak devrede. -->
@@ -1150,7 +1150,7 @@ function addMsg(role, text, meta){
  *    cevap gelince şeritte beliriyor, tabloyu izlemeye devam ediyorsun.
  * 3. Klavye takibi. `interactive-widget=resizes-content` desteklenirse CSS
  *    halleder; desteklenmezse visualViewport ile panelin alt kenarını
- *    klavyenin üstüne çekiyoruz (Android telefon'da ilk denenen durum).
+ *    klavyenin üstüne çekiyoruz (Android'de ilk denenen durum).
  */
 const SHEET = { open: false, preview: "" };
 

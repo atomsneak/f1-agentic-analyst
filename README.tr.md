@@ -221,7 +221,7 @@ yani soruyu sorup paneli kapatabiliyorsun, tabloyu izliyorsun, cevap gelince
 bilgisi kaybolur. Ayrıca sağ alttaki 56px'lik daire, telefonda tam olarak
 `GAP`/`INT` kolonlarının üstüne denk gelirdi.
 
-**Klavye (Android telefon):** panel klavyenin arkasında kalıyordu, iki
+**Klavye (gerçek bir Android telefonda):** panel klavyenin arkasında kalıyordu, iki
 katmanlı düzeltme:
 
 1. `<meta name="viewport" … interactive-widget=resizes-content>` — klavye

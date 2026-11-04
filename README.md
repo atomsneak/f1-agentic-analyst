@@ -222,7 +222,7 @@ in the strip when it arrives. A bubble collapsed is just an icon — the "did th
 arrive" information is lost. Also, the 56px circle in the bottom right on a phone would
 land exactly on top of the `GAP`/`INT` columns.
 
-**Keyboard (Android telefon):** the panel stayed behind the keyboard, a two-layer
+**Keyboard (a real Android phone):** the panel stayed behind the keyboard, a two-layer
 fix:
 
 1. `<meta name="viewport" … interactive-widget=resizes-content>` — when the keyboard

@@ -134,7 +134,7 @@ class Cdp {
 
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
-    // Telefon görünür alanı; DPR 2 gerçek cihaz yoğunluğu (Android telefon ~3,
+    // Telefon görünür alanı; DPR 2 yaygın bir gerçek cihaz yoğunluğu (amiral gemisi ~3,
     // ama 2 dosya boyutunu makul tutuyor ve yerleşimi aynı gösteriyor).
     await cdp.send("Emulation.setDeviceMetricsOverride", {
       width, height, deviceScaleFactor: 2, mobile: true,
