@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Sanal ortam / uv
+.venv/
+.uvcache/
+venv/
+
+# Çalışma zamanı verisi ve sırlar.
+#
+# `data/` tamamen yok sayılır, tek tek uzantı değil: bu klasör SQLite arşivini,
+# yedeklerini ve AI profil tablosunu (api_key sütunuyla) tutar. Uzantı listesi
+# yeni bir dosya türü eklendiği gün delinir; dizin kuralı delinmez. Yeni bir
+# klonda klasör ilk çalıştırmada kendiliğinden oluşur (store.init_db).
+data/
+
+# Ortam / sırlar
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pk8
+*.keystore
+# SSH anahtarları: `id_rsa*` tek başına yetmiyordu, modern kurulumlar ed25519.
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+# Servis hesabı dosyaları: uygulamada kullanılmıyor, ama bu klasöre düşerlerse
+# commit'lenmemeliler (gcloud, AWS, tarayıcı eklentisi dışa aktarımları).
+credentials.json
+creds.json
+secrets.json
+service-account*.json
+
+# Herhangi bir SQLite dosyası: data/ kuralı zaten var, ama bir yedek, bir kopya
+# ya da elden geçirilmiş bir dosya depo köküne düşerse de yakalanmalı.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# Editör / işletim sistemi
+.vscode/
+.idea/
+*.swp
+.DS_Store

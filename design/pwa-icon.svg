@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- F1 Agentic Analyst app icon source. Rendered to static/icons/*.png by
+     tools/make_icons.py (headless Chrome: this box has no ImageMagick/rsvg).
+
+     One path, two strokes: the full semicircle is the gauge track, the red one
+     is the same path dash-trimmed, so the swept range can never drift off the
+     track's radius (an arc with hand-picked endpoints does exactly that).
+     Path length = pi * 160 ~= 502.7; the dash draws from the left end (9 o'clock) up to the needle
+     (117°, i.e. 63/180 of the arc = 176 units), so the swept range always
+     ends exactly at the pointer.
+
+     Keep the artwork inside the middle 80% of the square: Android crops a
+     maskable icon to that circle. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" fill="#0a0c10"/>
+  <path d="M96 360 A160 160 0 0 1 416 360" fill="none" stroke="#242c38"
+        stroke-width="46" stroke-linecap="round"/>
+  <path d="M96 360 A160 160 0 0 1 416 360" fill="none" stroke="#e10600"
+        stroke-width="46" stroke-linecap="round" stroke-dasharray="176 1000"/>
+  <path d="M256 360 L334 208" fill="none" stroke="#e6edf3"
+        stroke-width="34" stroke-linecap="round"/>
+  <circle cx="256" cy="360" r="32" fill="#e6edf3"/>
+  <circle cx="256" cy="360" r="12" fill="#0a0c10"/>
+</svg>

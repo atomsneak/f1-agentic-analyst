@@ -1,0 +1,310 @@
+/* F1 Agentic Analyst — shared shell theme.
+ *
+ * Three surfaces (live 8099, archive 8100, standings 8101) render the same
+ * chrome. Before this file each page carried its own copy of the same variables,
+ * which is how two "identical" headers end up with different greys.
+ *
+ * Load order matters: this file sets the tokens and the shell; a page's own
+ * <style> comes after it and may only add page-specific rules. A page must not
+ * redefine --bg/--panel/--accent: if it needs a new colour, it belongs here.
+ *
+ * Design source: Stitch project "the design project", design system
+ * "its design system" (assets/17977343996707761457).
+ */
+
+:root {
+  /* surfaces */
+  --bg: #0a0c10;
+  --panel: #12161d;
+  --panel2: #171c25;
+  --panel3: #0e131a;
+  --line: #242c38;
+  --line-soft: #1b212a;
+
+  /* type */
+  --txt: #e6edf3;
+  --dim: #8b98a9;
+  --faint: #5f6b7a;
+
+  /* semantic */
+  --accent: #e10600;
+  --green: #2ecc71;
+  --green-dim: #1f5c39;
+  --amber: #f1c40f;
+  --amber-dim: #5a4a20;
+  --blue: #3498db;
+  --purple: #b085f5;
+  --red-dim: #6b2020;
+
+  /* shape */
+  --r-sm: 6px;
+  --r: 8px;
+  --r-lg: 10px;
+  --r-pill: 99px;
+
+  /* fonts: headings Space Grotesk, body Inter, numbers JetBrains Mono.
+     All three fall back to system faces — no webfont request, the dashboard
+     must render offline too. */
+  --font-head: "Space Grotesk", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font: 14px/1.45 var(--font-body);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- top shell ---------- */
+.shell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  flex-wrap: wrap;
+  /* `height:auto` AÇIKÇA gerekli. Önceden burada `min-height:46px` vardı ve
+     flex konteynerin sarmasını engelliyordu: telefonda (412px) nav + sezon
+     seçici aynı satıra sığmayınca `.shell-end` başlığın DIŞINA taşıyordu
+     (ölçüldü: header 46px, shell-end top:30 h:35), alt şerit kırpılıyordu.
+     Sarma olunca yükseklik kendiliğinden artıyor: 46 -> 65px. */
+  height: auto;
+  padding: 6px 16px;
+}
+
+.logo {
+  font-family: var(--font-head);
+  font-weight: 800;
+  letter-spacing: .5px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.logo b { color: var(--accent); }
+/* A gauge tick, not a wordmark: the header used to render "F1" in white next to
+   a red word, which read as the F1 logo lock-up. Colours and words were always
+   ours; the arrangement was not. */
+.logo .mark { color: var(--accent); font-weight: 400; margin-right: 2px; }
+
+/* Legal line under the data line. Small and quiet: it exists so the disclaimer
+   travels with the page (a README is not shipped to whoever opens the URL), not
+   to compete with the content. */
+#legal {
+  padding: 0 14px 10px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #4a5563;
+}
+#legal b { color: #5f6b7a; font-weight: 600; }
+
+/* nav: underline-active tabs, scrollable on a phone instead of wrapping into
+   a second row that pushes the badges off screen */
+.nav {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  align-self: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav a {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-family: var(--font-head);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.nav a:hover { color: var(--txt); }
+.nav a[aria-current="page"] {
+  color: #fff;
+  border-bottom-color: var(--accent);
+}
+
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  white-space: nowrap;
+}
+.badge.live { color: #fff; background: var(--accent); border-color: var(--accent); animation: pulse 1.6s infinite; }
+.badge.clear { color: var(--green); border-color: var(--green-dim); }
+.badge.arch { color: var(--amber); border-color: var(--amber-dim); }
+.badge.src { color: var(--blue); border-color: #1f4a63; text-transform: none; letter-spacing: 0; cursor: help; }
+.badge.warn { color: var(--amber); border-color: var(--amber-dim); text-transform: none; letter-spacing: 0; cursor: help; }
+@keyframes pulse { 50% { opacity: .55; } }
+
+.head-info { color: var(--dim); font-size: 12.5px; }
+.head-info b { color: var(--txt); font-weight: 600; }
+
+/* right-hand control cluster */
+.shell-end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.pick select {
+  background: var(--panel3);
+  color: var(--txt);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  outline: none;
+  cursor: pointer;
+  max-width: 320px;
+}
+.pick select:focus { border-color: #37506b; }
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  border-radius: var(--r-sm);
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.btn:hover { border-color: #37506b; color: #fff; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+
+/* ---------- provenance / notices ----------
+ *
+ * The project rule is "no invented data". A surface that is showing something
+ * older than it wanted to must be able to say so in the chrome, so these two
+ * components are part of the shell rather than a page's private CSS. */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  letter-spacing: .2px;
+}
+.strip b { color: var(--dim); font-weight: 600; }
+.strip .sep { color: #2f3947; }
+.strip .push { margin-left: auto; }
+
+.notice {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  border: 1px solid var(--amber-dim);
+  border-left: 3px solid var(--amber);
+  background: #1a1710;
+  color: #e3cf8a;
+  border-radius: var(--r-sm);
+  padding: 8px 11px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.notice.danger { border-color: var(--red-dim); border-left-color: var(--accent); background: #1c1113; color: #eda9a9; }
+.notice b { color: #f4e5b6; }
+.notice.danger b { color: #ffc9c9; }
+.notice .ico { flex: 0 0 auto; font-size: 12px; line-height: 1.4; }
+
+/* ---------- [hidden] her zaman kazansın ----------
+ * `hidden` attribute'unun tarayıcı varsayılanı `display:none` ama özgüllüğü
+ * çok düşük (0,0,0): `.subtabs{display:flex}` gibi tek sınıflı bir kural onu
+ * ezer. Bu yüzden `el.hidden = true` yazdığım hâlde öğe ekranda kalıyordu --
+ * telefonda "Geçici puan durumu" panelden kaldırıldı ama sekme çubuğu hâlâ
+ * görünüyordu. !important burada doğru araç: `hidden` bir görünürlük sözü,
+ * düzen kuralı değil ve her zaman kazanmalı. */
+[hidden] { display: none !important; }
+
+/* ---------- generic card ---------- */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.card > h2,
+.card > h3 {
+  margin: 0;
+  padding: 9px 12px;
+  font-family: var(--font-head);
+  font-size: 11px;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card > h2 .hint,
+.card > h3 .hint {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--font-body);
+}
+.card .body { padding: 10px 12px; }
+
+/* numbers always line up */
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* team colour chip used by every standings view */
+.tchip { display: inline-block; width: 3px; height: 13px; border-radius: 2px; vertical-align: -2px; }
+
+.up { color: var(--green); }
+.down { color: #e06c6c; }
+.flat { color: var(--faint); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+  .shell { padding: 0 10px; gap: 8px; }
+  .shell-end { margin-left: 0; width: 100%; justify-content: space-between; padding-bottom: 6px; }
+  .pick select { max-width: 200px; }
+  .strip { padding: 6px 10px; }
+}
+@media (max-width: 640px) {
+  .head-info.optional { display: none; }
+  /* Sarma düzeltildikten sonra header telefonda 95px'e çıktı (logo+nav bir
+     satır, iki badge ayrı satır, seçici en altta). 915px'lik ekranın %10'u
+     sadece başlık olunca tabloya yer kalmıyor. Sıkıştırma: üç satır kalıyor
+     ama 95 -> 66px. Badge'ler tek satıra sığsın diye puntosu ve boşluğu düşük. */
+  .shell { padding: 4px 10px; gap: 6px; row-gap: 4px; }
+  .logo { font-size: 13px; }
+  .nav a { padding: 0 8px; font-size: 10.5px; letter-spacing: .3px; }
+  .badge { font-size: 9.5px; padding: 2px 6px; }
+  .shell-end { padding-bottom: 0; }
+  .pick select { max-width: 190px; font-size: 12px; }
+}

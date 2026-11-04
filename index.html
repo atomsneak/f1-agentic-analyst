@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<!-- interactive-widget=resizes-content: Android klavyesi açılınca görünür alanı KÜÇÜLT,
+     klavyenin altına gizlemek yerine. Varsayılan (overlays-content) klavyeyi
+     sayfanın üstüne bindirir; alt panel `bottom:0` ile konumlandığı için panel
+     tam olarak klavyenin arkasında kalır -- Android telefon'da görülen buydu.
+     resizes-content ile layout viewport kısalıyor, `bottom:0` klavyenin
+     üstüne oturuyor. Desteklemeyen tarayıcı bu anahtarı yok sayar, JS tarafı
+     (visualViewport) yedek olarak devrede. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0a0c10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="F1 Canlı">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" sizes="32x32" href="static/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="static/icons/apple-touch-icon-180.png">
+
+<title>F1 Agentic Analyst — Canlı</title>
+<link rel="stylesheet" href="static/theme.css">
+<style>
+  /* Page-specific only. Tokens, shell, nav and the notice/strip components
+     come from /static/theme.css; this file must not redefine --bg/--panel. */
+  main{flex:1;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,.85fr);min-height:0}
+  #left{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+  .replay{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);background:#151b24;font-size:12px;color:var(--dim)}
+  .replay[hidden]{display:none}
+  .replay .tag{background:var(--amber);color:#101319;font-weight:800;border-radius:5px;padding:2px 7px;font-size:10.5px;letter-spacing:.5px}
+  .replay #rname{color:var(--txt);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34%}
+  .replay input[type=range]{flex:1;accent-color:var(--accent);min-width:110px;cursor:pointer}
+  .replay #rlapval{font-variant-numeric:tabular-nums;min-width:96px;text-align:right;color:var(--txt)}
+  .replay button{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:7px;padding:4px 9px;font-size:11px;font-weight:500}
+  .replay button:hover{border-color:#37506b;color:#fff}
+  .tablewrap{flex:1;overflow:auto;min-height:0}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}
+  thead th{position:sticky;top:0;background:var(--panel2);color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:8px 8px;text-align:right;border-bottom:1px solid var(--line);z-index:2}
+  thead th:nth-child(2),thead th:nth-child(3){text-align:left}
+  tbody td{padding:7px 8px;text-align:right;border-bottom:1px solid #1b212a;white-space:nowrap}
+  tbody tr:hover{background:#161c26}
+  td.pos{text-align:center;font-weight:700;color:var(--dim);width:34px}
+  td.drv{text-align:left;font-weight:700}
+  td.team{text-align:left;color:var(--dim);font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+  .tla-bar{display:inline-block;width:3px;height:13px;border-radius:2px;margin-right:7px;vertical-align:-2px}
+  .gap.leader{color:var(--green)}
+  /* Sektör renkleri: mor = seansta sahanın en hızlısı, yeşil = sürücünün kendi
+     en iyisi, sarı = kendi en iyisinden yavaş. Renk tek başına yetmez (renk
+     körlüğü, güneş ışığı): hücrenin sol kenarına aynı rengi taşıyan bir çizgi
+     konuyor ve değer her zaman yazılı kalıyor. */
+  th.sechdr{color:#5f6b7a}
+  td.sec{color:#a8b6c8;font-size:11.5px;padding-left:6px;border-left:2px solid transparent}
+  /* Sector colours. Specificity is spelled out with `[class*="s-"]` because the
+     plain `.part` rule below has EQUAL specificity (0,2,1) and appeared later in
+     the sheet -- so `td.sec.part` silently overrode every colour and a column of
+     perfectly good yellow/green/purple rendered grey. Measured in the browser:
+     class "sec s-y part", computed colour rgb(139,152,169) instead of
+     rgb(216,178,60). A sector time is a complete measurement of that sector
+     whether or not the rest of the lap has happened, so a published sector keeps
+     its verdict; only cells with NO verdict stay neutral. */
+  td.sec[class*="s-"].s-p{color:#c9a6ff;font-weight:700;border-left-color:#b085f5}
+  td.sec[class*="s-"].s-g{color:#2ecc71;font-weight:600;border-left-color:#2ecc71}
+  td.sec[class*="s-"].s-y{color:#d8b23c;border-left-color:#6b5a1e}
+  td.sec.na{color:#4a5563}
+  /* Kısmi tur: renk YOKSA nötr gri. Renk varsa yukarıdaki kurallar kazanır. */
+  td.sec.part{color:#8b98a9}
+  td.sec.part[class*="s-"]{font-weight:600}
+  /* Mini sektör çubukları: sektör süresinin hemen altında, aynı renk dili.
+     Çubuk bir SÜRE değil bir DURUM gösterir -- feed mini sektörün süresini
+     yayınlamıyor, yalnızca kodunu veriyor (2049 seans en iyisi, 2048 kişisel
+     en iyi, 2051 gelişme yok). Bu yüzden çubuk uzunluğu hiçbir şey ifade
+     etmiyor: hepsi eşit genişlikte, yalnızca rengi konuşuyor.
+     Renk eşlemesi sektör hücresinin kuralıyla AYNI: mor = sahada en hızlı,
+     yeşil = sürücünün kendi en iyisi, sarı = kendi en iyisinden yavaş. */
+  .sv{display:block;line-height:1.2}
+  .mini{display:flex;gap:1px;height:3px;margin-top:3px;border-radius:1px;overflow:hidden}
+  .mini i{flex:1 1 0;min-width:1px;background:#28303b;border-radius:1px}
+  .mini .mp{background:#b085f5}
+  .mini .mg{background:#2ecc71}
+  .mini .my{background:#c9a227}
+  /* Kod 0 = veri yok (feed sektörü kapatırken kuyruğu sıfırla dolduruyor).
+     Yeri korunuyor ki iki sürücünün şeritleri hizalı kalsın, ama boyanmıyor:
+     gri bir çubuk "ölçüldü ve sonuç bu" gibi okunurdu.
+     Eşlemede olmayan kodlar (2064, 2050, 2052 görüldü) keza soluk gri kalır --
+     anlamı uydurmak yerine "bilinmiyor" demek. */
+  .mini .m0{background:transparent}
+  .mini .mn{background:#3a4552}
+  /* Sektör rengi açıklaması: tabloya ilk kez bakan biri için. */
+  .sechint{font-size:10.5px;color:#5f6b7a;padding:4px 8px 6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .sechintbtn{margin-left:auto;background:var(--panel3);border:1px solid var(--line);
+    color:var(--dim);border-radius:var(--r-pill);padding:3px 9px;font:inherit;font-size:10.5px;cursor:pointer}
+  .sechintbtn:hover{border-color:#37506b;color:#cdd8e6}
+  .sechintbtn.on{color:#8fd39b;border-color:#2c4436}
+  .sechint b{font-weight:600}
+  .sechint .p{color:#c9a6ff}
+  .sechint .g{color:#2ecc71}
+  .sechint .y{color:#d8b23c}
+  .fastest{color:var(--purple);font-weight:600}
+  .tyre{display:inline-flex;align-items:center;gap:5px;justify-content:flex-end}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;border:1px solid #444}
+  .dot.SOFT{background:#e10600;border-color:#e10600}
+  .dot.MEDIUM{background:#f1c40f;border-color:#f1c40f}
+  .dot.HARD{background:#e8e8e8;border-color:#e8e8e8}
+  .dot.INTERMEDIATE{background:#2ecc71;border-color:#2ecc71}
+  .dot.WET{background:#3498db;border-color:#3498db}
+  .dot.UNKNOWN,.dot\?{background:#555}
+  .pit{color:var(--amber)}
+  /* Ceza rozetleri. Renk + kelime birlikte: yalnız renk, renk körü bir okuyucuya
+     hiçbir şey söylemez; yalnız kelime ise acele bakışta gözden kaçar. */
+  .pen{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.2px;
+    border-radius:4px;padding:1px 5px;margin-left:6px;white-space:nowrap;vertical-align:1px}
+  .pen.live{background:#3a1f0a;border:1px solid #7a4a12;color:#f5b942}
+  .pen.done{background:#1a2129;border:1px solid #2c3644;color:#8b98a9}
+  .pen.review{background:#0f2433;border:1px solid #24506b;color:#6cb6e0}
+  .rcpanel{border-top:1px solid var(--line);background:var(--panel);max-height:26%;overflow:auto;padding:8px 14px 12px}
+  .rcpanel h4{margin:2px 0 6px;font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim)}
+  .rcmsg{font-size:12.2px;color:#c3ccd8;padding:2px 0;border-bottom:1px dashed #1c222c}
+  .rcmsg b{color:var(--amber);font-weight:600}
+  /* chat */
+  #chat{display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+  /* Tutamak yalnız telefonda var. Masaüstünde panel zaten akışta, katlanacak
+     bir şey yok. */
+  #grip{display:none;position:relative}
+  #chathead{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
+  /* Başlık bloğu esneyen taraf: flex:1 1 auto + min-width:0. Bu olmadan
+     flex-shrink:1 ile 453px'lik bir çubukta 91px'e sıkışıyordu ve
+     "Strategi Asistanı" üç satıra kırılıyordu (masaüstünde ölçüldü:
+     145px yükseklik). Sağdaki düğmeler sabit kalsın, yer başlıktan gelsin. */
+  #chathead > div:first-child{flex:1 1 auto;min-width:0}
+  #chathead .t{font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #chathead .s{font-size:11.5px;color:var(--dim);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Sağ kolon dar (1280px'te ~453px) ve dört öğe tam dolduruyordu: başlığa
+     esneyecek yer kalmıyor, 91px'e sıkışıp kırpılıyordu (ölçüldü). Alt başlık
+     dekoratif ("canlı veriyle · sohbet sunucuda saklanır"), "DÜŞÜNME" etiketi
+     de kendini anlatıyor -- ikisi de dar ekranda gidiyor, başlık tam görünüyor. */
+  @media (max-width: 2000px) {
+    #chathead .s { display: none; }
+    .rsel span { display: none; }
+    /* Öğrenilen-tercih rozeti dar ekranda kısalır (tam metin title'da ve
+       telefonda tıklanınca sıfırlama onayında). Başlık tam görünsün diye
+       yer buradan geliyor: 453px'lik çubukta 110+122+80+55+27 = 394px. */
+    #chathead #pref { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
+  .rsel{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
+  .rsel select{background:#0e131a;color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:4px 6px;font:inherit;font-size:12px;text-transform:none;letter-spacing:0;outline:none;cursor:pointer}
+  .rsel select:focus{border-color:#37506b}
+  .rsel.off select{border-color:#5a4a20;color:#e0b64a}
+  #clear{background:transparent;border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 9px;border-radius:7px;font-weight:500}
+  #clear:hover{border-color:#5c3a3a;color:#e88}
+  /* learned preferences: compact badge, one click to forget */
+  #pref{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    background:transparent;border:1px solid var(--line);color:var(--dim);font-size:10.5px;
+    padding:4px 9px;border-radius:99px;font-weight:500}
+  #pref:hover{border-color:#3a4757;color:#cdd8e6}
+  #pref.on{color:#8fd39b;border-color:#2c4436}
+  /* usage strip: what the last answers actually cost, in tokens and credits */
+  #usagebar{padding:5px 14px 0;font-size:10.5px;color:#5f6b7a;letter-spacing:.2px;
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  #usagebar b{color:#8b98a9;font-weight:600}
+  #usagebar .warn{color:#e0b64a}
+  #usagebar .money{color:#7f8fa3}
+  .meta.warn{color:#e0b64a}
+  .scopenote{display:block;font-size:10.5px;color:#7f8fa3;letter-spacing:.2px;
+    margin-bottom:5px;padding-bottom:4px;border-bottom:1px dashed #26303d}
+  #msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:11px}
+  .m{max-width:92%;padding:9px 12px;border-radius:12px;white-space:pre-wrap;word-wrap:break-word;font-size:13.2px}
+  .m.user{align-self:flex-end;background:#1d3a5c;border:1px solid #2a5480}
+  .m.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+  .m.err{align-self:flex-start;background:#3a1717;border:1px solid #6b2020;color:#ffb4b4}
+  .m .meta{display:block;font-size:10.5px;color:var(--dim);margin-top:5px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 8px}
+  /* Sohbetin altındaki veri satırı: archive.html'deki #srcline ile birebir
+     aynı ölçü (iki yüzeyin alt bilgi alanı hizalı kalsın). */
+  #srcline{padding:6px 14px 10px;font-size:10.5px;color:#5f6b7a;line-height:1.5;
+    border-top:1px solid var(--line-soft)}
+  .chip{font-size:11.5px;color:#b9c4d2;background:#181e28;border:1px solid var(--line);border-radius:99px;padding:4px 10px;cursor:pointer}
+  .chip:hover{border-color:#3a4757;color:#fff}
+  /* Seçili kapsam çipi: hangi seansların bağlama girdiği tek bakışta görünsün.
+     `.off` = o seansın kaydı yok (tıklanamaz), sessizce yok sayılmaz. */
+  .chip.on{background:#1b2431;border-color:#37506b;color:#fff}
+  .chip.off{opacity:.45;cursor:default;text-decoration:line-through}
+  .chip.sum{border-style:dashed}
+  form{display:flex;gap:8px;padding:10px 14px 14px;border-top:1px solid var(--line)}
+  textarea{flex:1;resize:none;height:44px;background:#0e131a;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;font-size:13.2px;outline:none}
+  textarea:focus{border-color:#37506b}
+  button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:0 16px;font-weight:700;cursor:pointer;font-size:13px}
+  button:disabled{opacity:.5;cursor:default}
+  .typing{display:inline-block}
+  .typing i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--dim);margin:0 1px;animation:b 1s infinite}
+  .typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+  @keyframes b{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+  /* ---- sub-tabs: Asistan | Geçici puan durumu ----
+     Kept inside the right-hand column so the timing table keeps the width it
+     needs; a third column at 1440px would squeeze both. */
+  .subtabs{display:flex;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .subtabs button{flex:1;background:transparent;border:0;border-bottom:2px solid transparent;
+    color:var(--dim);font-family:var(--font-head);font-size:11px;font-weight:600;
+    letter-spacing:.6px;text-transform:uppercase;padding:9px 6px;cursor:pointer;border-radius:0}
+  .subtabs button:hover{color:var(--txt)}
+  .subtabs button.on{color:#fff;border-bottom-color:var(--accent)}
+  #pane-assist{flex:1;display:flex;flex-direction:column;min-height:0}
+  #pane-assist[hidden],#pane-points[hidden]{display:none}
+  #pane-points{flex:1;min-height:0;overflow:auto}
+  .pbody{padding:10px 12px 14px}
+  .pmeta{font-family:var(--font-mono);font-size:10px;color:var(--faint);margin:8px 0 9px;line-height:1.6}
+  .pmeta b{color:var(--dim);font-weight:600}
+  .plist{display:flex;flex-direction:column}
+  .prow{display:grid;grid-template-columns:22px 10px minmax(0,1fr) 62px 54px;gap:7px;align-items:center;
+    padding:5px 0;border-bottom:1px solid var(--line-soft);font-size:12px}
+  .prow:last-child{border-bottom:0}
+  .prow.lead{box-shadow:inset 2px 0 0 var(--accent);padding-left:5px}
+  .prow .rk{font-family:var(--font-mono);font-size:11px;color:var(--dim);text-align:right}
+  .prow .rk.tie{color:var(--amber)}
+  .prow .sw{width:3px;height:15px;border-radius:2px}
+  .prow .who{min-width:0;display:flex;align-items:baseline;gap:5px}
+  .prow .who .c{font-family:var(--font-mono);font-weight:700;letter-spacing:.3px;font-size:12px}
+  .prow .who .base{color:var(--faint);font-family:var(--font-mono);font-size:10.5px}
+  .prow .gain{font-family:var(--font-mono);font-size:11.5px;font-weight:700;text-align:right}
+  .prow .tot{font-family:var(--font-mono);font-weight:700;font-size:12.5px;text-align:right}
+  .prow .mv{font-size:9px;line-height:1;margin-left:2px}
+  .psub{margin:12px 0 4px;font-family:var(--font-head);font-size:10px;letter-spacing:.7px;
+    text-transform:uppercase;color:var(--dim)}
+  .pempty{padding:18px 6px;text-align:center;color:var(--dim);font-size:12px;line-height:1.6}
+  .pfoot{font-size:10.5px;color:var(--faint);line-height:1.6;margin-top:11px;
+    border-top:1px solid var(--line-soft);padding-top:9px}
+  .pfoot b{color:var(--dim)}
+  @media (max-width:900px){main{grid-template-columns:1fr;grid-template-rows:minmax(0,1.2fr) minmax(0,1fr)}#left{border-right:0;border-bottom:1px solid var(--line)}}
+
+  /* ---- telefon (<=640px) ----
+     Üç ayrı sorun vardı, üçü de burada çözülüyor:
+
+     1. Tablo 13 kolon. 390px'e sığmıyor, yatay kaydırma gerekiyordu ve
+        kaydırma olduğunu gösteren hiçbir ipucu yoktu; ekran görüntüsünde
+        "GRID" kolonu kesik görünüyordu. Burada sadece yarışta gerçekten
+        kullanılan beş kolon kalıyor: sıra, sürücü, grid, fark, lastik.
+        Gizlenenler detay: takım adı (renk çubuğu zaten sürücünün yanında),
+        INT, tur, son tur, en iyi tur, MED8, TREND, pit sayısı.
+
+     2. `html,body{height:100%}` + `main{flex:1}` sayfayı görünür alana
+        kilitliyordu. Telefon tarayıcısının adres çubuğu kaydırınca
+        kaybolduğu için o yükseklik sürekli değişiyor ve altta boş siyah
+        alan kalıyordu. Telefonda kilit kalkıyor: sayfa normal akışta,
+        kendi kendine kaydırılıyor; tablo ve sohbet kendi içinde kaydırılır.
+        `dvh` desteklenirse onu kullan, yoksa `vh` yedeği zaten yukarıda. */
+  @media (max-width:640px){
+    html,body{height:auto;min-height:100%}
+    body{min-height:100dvh}
+    main{display:block;min-height:0}
+    #left{border-right:0;border-bottom:1px solid var(--line)}
+    /* Tablo kendi içinde kaydırılır: 25 satırlık bir yarışta sayfanın
+       tamamını aşağı itmesin, Race Control ve sohbet ekranda kalsın. */
+    .tablewrap{max-height:46dvh;overflow:auto;-webkit-overflow-scrolling:touch}
+    /* `#chat{min-height:58dvh}` BURADAN KALDIRILDI. Panel eklenmeden önceki
+       turdan kalmaydı: sohbet akıştaki bir kolonken ona yer ayırıyordu.
+       Panel sabitlenince zararlı oldu -- CSS'te min-height, max-height'ı
+       YENER, yani `.collapsed{max-height:46px}` hiç uygulanmıyordu ve panel
+       kapanmıyordu (ekran görüntüsünde görüldü). Yüksekliği artık panel
+       kuralı veriyor. */
+    /* TEAM kaldırıldıktan sonraki kolonlar:
+       1 P · 2 DRV · 3 GRID · 4 GAP · 5 INT · 6 LAP · 7 LAST · 8 BEST ·
+       9 MED8 · 10 TREND · 11 TYRE · 12 PIT · 13-15 S1/S2/S3 · 16 IDEAL · 17 LOSS
+       Telefonda kalanlar: P, DRV, GRID, GAP, TYRE + S1/S2/S3 (kullanıcı sektör
+       renklerini özellikle istedi). Ceza rozeti DRV hücresinin içinde, yani
+       telefonda da görünüyor. */
+    thead th:nth-child(5),tbody td:nth-child(5),
+    thead th:nth-child(6),tbody td:nth-child(6),
+    thead th:nth-child(7),tbody td:nth-child(7),
+    thead th:nth-child(8),tbody td:nth-child(8),
+    thead th:nth-child(10),tbody td:nth-child(10),
+    thead th:nth-child(12),tbody td:nth-child(12),
+    thead th:nth-child(16),tbody td:nth-child(16),
+    thead th:nth-child(17),tbody td:nth-child(17){display:none}
+    thead th{padding:7px 6px;font-size:10px;letter-spacing:.4px}
+    tbody td{padding:7px 6px;font-size:12.5px}
+    td.pos{width:26px}
+    td.drv{padding-left:10px}
+    .tla-bar{margin-right:5px}
+    .rcpanel{max-height:none;padding:8px 10px 10px}
+    /* Tek satır: ölçüldü, flex-wrap ile 3 öğe 412px'e sığmıyordu ve
+       "temizle" alt satıra düşüp başlığı 74px yapıyordu. #pref metni
+       ("süre = dakika:saniye (1:38.993) · biçim…") 190px yer istiyor;
+       genişliği kısıtlayıp üç nokta koyuyoruz, işlev korunuyor. */
+    #chathead{padding:7px 10px;gap:6px;flex-wrap:nowrap}
+    #chathead #pref{max-width:108px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #chathead .rsel span{display:none}
+    /* Çift başlık: tutamak zaten "Asistan" yazıyor, hemen altında
+       "Strategi Asistanı" tekrarı vardı (ekran görüntüsünde görüldü).
+       Başlık metni gidiyor, düğmeler kalıyor -- düşünme/temizle/tercih
+       hâlâ gerekli. */
+    #chathead .t{display:none}
+    #chathead > div:first-child{display:none}
+    #chathead .s{display:none}
+    #msgs{padding:10px}
+    /* Öneri çipleri telefonda KALDIRILDI. Panel 78dvh'de açılıyor; dört çip
+       sarıp iki satıra düşünce ~60px yiyordu ve sohbetin kendisi neredeyse
+       görünmüyordu (ekran görüntüsünde görüldü). Masaüstünde duruyorlar:
+       orada yer bol, çipler ilk soruyu kolaylaştırıyor. */
+    .chips{display:none}
+    #f{padding:8px 10px}
+    .subtabs button{font-size:10px;padding:8px 4px;letter-spacing:.4px}
+    /* Geçici puan tablosu: 5 kolon 390px'e sığar ama puan sütunu daralmasın. */
+    .prow{grid-template-columns:18px 8px minmax(0,1fr) 46px 44px;gap:5px;font-size:11.5px}
+    .pbody{padding:8px 10px 12px}
+
+    /* ---- asistan sabit alt panel (sheet) ----
+       `#chat` telefonda akıştan çıkıp ekranın altına sabitleniyor. Kapalıyken
+       yalnız 46px'lik tutamak görünür; açıkken ekranın %78'i.
+
+       Yükseklik AÇIKÇA veriliyor (height), sadece max-height ile
+       sınırlanmıyor. Sebep: `#msgs{flex:1}` ancak kabın belirli bir yüksekliği
+       varsa esner. Sadece max-height olsaydı panel içeriği kadar yüksek
+       olurdu ve mesaj alanı büyümezdi -- telefonda "panel sayfaya oturmuyor"
+       görüntüsünün sebebi buydu (msgs sıfıra yakın, boşluk boşa gidiyor).
+
+       z-index 40: tablo başlığı `sticky` ve z-index:2 -- panel onun üstünde
+       kalmalı, yoksa kaydırırken başlık panelin içinden geçer. */
+    #chat{
+      position:fixed;left:0;right:0;bottom:0;z-index:40;
+      /* %62, %78 değil: %78'de tablo tamamen örtülüyordu (ölçüldü 713px
+         /915). Panelin işi tabloyu gizlemek değil, yanında durmak. Klavye
+         açıkken JS bunu büyütüyor (yazarken cevabı görmek için). */
+      height:62dvh;max-height:62dvh;min-height:0;
+      border-radius:14px 14px 0 0;
+      border-top:1px solid #2a3542;
+      box-shadow:0 -12px 34px rgba(0,0,0,.6);
+      /* `overflow:hidden` iki iş yapıyor: köşe yarıçapını kırpıyor ve kapalı
+         hâlde taşan içeriği kesiyor. */
+      overflow:hidden;
+      transition:height .22s cubic-bezier(.32,.72,0,1);
+      /* Samsung'un gesture çubuğu: panele yapışmasın. */
+      padding-bottom:env(safe-area-inset-bottom,0);
+    }
+    /* Kapalı hâl NEDEN transform değil: ilk sürüm
+       `transform:translateY(calc(100% - 46px))` kullanıyordu ve telefonda
+       46px'ten FAZLA içerik görünüyordu -- tutamağın altında ikinci bir
+       "Arşiv sohbeti" satırı. Sebep: `%` transform öğenin kendi kutusuna
+       göre hesaplanır, kutunun yüksekliği ise içeriğe göre değişir; ikisi
+       arasındaki fark ekranda kalıyordu. `height` kilidi bu belirsizliği
+       kaldırıyor: kapalıyken panel kelimenin tam anlamıyla 46px, taşan ne
+       varsa `overflow:hidden` kesiyor.
+       Maliyeti: yükseklik geçişi layout hesabı yapar. Panelin içeriği bir
+       sohbet, 25 satırlık tablo değil; ölçülemeyecek kadar küçük. */
+    #chat.collapsed{height:46px;max-height:46px}
+    /* Kapalıyken panelin içeriğine dokunma: tutamak dışında hiçbir şey
+       tıklanabilir olmasın (yoksa klavye açıkken arkadaki input'a basılır). */
+    #chat.collapsed > *:not(#grip){pointer-events:none}
+    #grip{
+      /* `flex:0 0 46px` ZORUNLU, sadece height:46px yetmez. #chat bir flex
+         kolon ve kapalıyken toplam yüksekliği 46px; altındaki sekmeler/panel
+         yer isteyince flex-shrink:1 olan tutamaç 12px'e kadar eziliyordu --
+         ekran görüntüsünde tutamağın altında sekmeler sızıyordu. */
+      display:flex;align-items:center;gap:8px;width:100%;
+      flex:0 0 46px;height:46px;
+      padding:0 12px;background:transparent;border:0;border-radius:0;
+      color:var(--dim);font-family:var(--font-head);cursor:pointer;
+      /* Dokunma hedefi 46px; çift dokunuşta sayfayı yakınlaştırma. */
+      touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+    }
+    /* Tutamağın ortasında ince bir çizgi: "buradan sürüklenir" işareti. */
+    #grip::before{
+      content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);
+      width:36px;height:3px;border-radius:2px;background:#33404f;
+    }
+    #grip .chev{font-size:10px;color:#5f6b7a;transition:transform .22s ease}
+    #chat:not(.collapsed) #grip .chev{transform:rotate(180deg)}
+    #grip .glabel{
+      font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;
+      color:var(--txt);white-space:nowrap;
+    }
+    #grip .gprev{
+      flex:1;min-width:0;text-align:left;font-size:11.5px;color:#7f8fa3;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      font-family:var(--font-body);letter-spacing:0;text-transform:none;
+    }
+    /* Panel AÇIKKEN tutamak sadece tutma çubuğu: etiket ve önizleme gider.
+       Ekran görüntüsünde tutamak "ASİSTAN" yazıyordu, hemen altında sekme
+       "ASİSTAN" -- çift etiket. Önizleme de gereksiz, mesajlar ekranda. */
+    #chat:not(.collapsed) #grip .gprev,
+    #chat:not(.collapsed) #grip .glabel{display:none}
+    #chat:not(.collapsed) #grip{justify-content:center;
+      /* 46px yalnız KAPALI hâl için: dokunma hedefi ve önizleme satırı.
+         Açıkken içinde sadece tutma çubuğu ve ok var; 46px boş yer mesaj
+         alanından çalıyordu (ölçüldü: 30px'e inince +16px). Hâlâ dokunulabilir
+         bir hedef, kapatmak için. */
+      /* min-height YOK: panelde sıfır olmayan min-height, max-height'ı ezer
+         ve bu daha önce panelin kapanmasını engellemişti (bkz. üstteki blok).
+         flex:0 0 30px tek başına yeter; esnemeyi de engeller. */
+      flex:0 0 30px;height:30px;}
+    #chat:not(.collapsed) #grip::before{top:4px}
+    /* Açıkken: mesaj listesi kalan yüksekliği alır ve kendi içinde kaydırır.
+       `min-height:0` olmadan flex çocuğu küçülmeyi reddeder ve form panelin
+       dışına taşar -- klavyenin arkasında kalan tam olarak buydu. */
+    #chat:not(.collapsed) #pane-assist{min-height:0}
+    #chat #msgs{min-height:0}
+    #chat #f{
+      padding:8px 10px 10px;border-top:1px solid var(--line);
+      background:var(--panel);
+      /* Klavye açıkken form panele yapışık kalsın. */
+      position:sticky;bottom:0;
+    }
+    #chat textarea{height:40px;font-size:16px} /* 16px: iOS/Samsung odakta yakınlaştırmasın */
+    /* Sayfa içeriği panelin altında kalmasın. */
+    body{padding-bottom:calc(46px + env(safe-area-inset-bottom,0))}
+  }
+
+
+  /* ---------- AI sağlayıcı diyalogu ----------
+     Paylaşılan tema yerine sayfa içinde: yalnız sohbet yüzeylerinde var.
+     `dialog` seçildi çünkü odak tuzağı, ESC ve arka planı karartma tarayıcıdan
+     geliyor; elle yazılan bir modal bunların hepsini yeniden üretmek zorunda. */
+  /* The generic `button` rule paints any bare <button> accent-red, which made
+     this one look like a destructive action sitting next to "temizle". */
+  #aibtn{background:transparent;border:1px solid var(--line);color:var(--dim);
+    font-size:11px;padding:4px 9px;border-radius:7px;font-weight:500;cursor:pointer}
+  #aibtn:hover{border-color:#37506b;color:#cdd8e6}
+  #aibtn.warn{color:#e0b64a;border-color:#5a4a20}
+  #aidlg{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
+    color:var(--txt);padding:0;width:min(520px,94vw);max-height:88vh}
+  #aidlg::backdrop{background:#000a;backdrop-filter:blur(2px)}
+  .aiform{display:flex;flex-direction:column;gap:9px;padding:14px 16px 16px;margin:0}
+  .aiform h3{margin:0;font-family:var(--font-head);font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+  .aihint{margin:0;font-size:11.5px;color:var(--faint);line-height:1.5}
+  .aiform label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--dim);
+    text-transform:uppercase;letter-spacing:.4px}
+  .aiform input{background:var(--panel3);color:var(--txt);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:7px 9px;font:inherit;font-size:12.5px;text-transform:none;letter-spacing:0}
+  .aiform input:focus{outline:none;border-color:#37506b}
+  .ainote{margin:0;font-size:10.5px;color:var(--faint)}
+  .aiactions{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+  .aiactions button{border:1px solid var(--line);background:transparent;color:var(--dim);
+    border-radius:var(--r-sm);padding:6px 11px;font:inherit;font-size:11.5px;cursor:pointer}
+  .aiactions button:hover{border-color:#37506b;color:#fff}
+  .aiactions button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  .aiactions button.danger{color:#e88;border-color:#5c3a3a}
+  .aiactions button.ghost{margin-left:auto}
+  .aistatus{font-size:11.5px;line-height:1.5;min-height:16px}
+  .aistatus.ok{color:#8fd39b}
+  .aistatus.bad{color:#e0b64a}
+  .ailist{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+  .ailist li{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim);
+    border:1px solid var(--line-soft);border-radius:var(--r-sm);padding:6px 8px;cursor:pointer}
+  .ailist li[aria-current="true"]{border-color:#37506b;color:var(--txt);background:#161c26}
+  .ailist li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ailist li .tag{font-family:var(--font-mono);font-size:9.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+<header class="shell">
+  <div class="logo"><span class="mark" aria-hidden="true">◔</span> <b>LIVE</b></div>
+  <nav class="nav" aria-label="Yüzeyler">
+    <a href="http://127.0.0.1:8103/" data-port="8103" title="Hafta sonu: seans kartları (antrenman, sıralama, sprint, yarış)">Hafta</a>
+    <a href="http://127.0.0.1:8099/" data-port="8099" aria-current="page">Canlı</a>
+    <a href="http://127.0.0.1:8100/" data-port="8100" title="Geçmiş yarışlar için grafik tabanlı analiz (aynı arşiv)">Arşiv</a>
+    <a href="http://127.0.0.1:8101/" data-port="8101" title="Sezonun resmî sürücü ve marka sıralaması (çevrimdışı açılır)">Puan Durumu</a>
+  </nav>
+  <span class="badge" id="status">…</span>
+  <span class="badge" id="track">—</span>
+  <span class="head-info optional" id="meeting">bağlanıyor…</span>
+  <span class="head-info optional" id="weather"></span>
+  <span class="head-info optional" id="stamp"></span>
+  <div class="shell-end">
+    <label class="pick" title="Canlı yayın ya da arşivdeki geçmiş yarışlar (sohbetleriyle birlikte)">
+      <span>yarış</span>
+      <select id="races"><option value="live">● Canlı</option></select>
+    </label>
+  </div>
+</header>
+<main>
+  <section id="left">
+    <div class="replay" id="replaybar" hidden>
+      <span class="tag">ARŞİV</span>
+      <span id="rname"></span>
+      <input type="range" id="rlap" min="0" max="0" value="0" step="1" title="Tur seç">
+      <span id="rlapval">—</span>
+      <button type="button" id="rtolive">canlıya dön</button>
+    </div>
+    <!-- Sektör renklerinin anlamı. Tabloya ilk kez bakan biri için: "hepsi sarı"
+         bir sütun, sürücünün kötü gittiği anlamına gelmez -- renksiz hücreler
+         henüz tamamlanmamış tur demektir (feed sektörü tur biterken yayınlar). -->
+    <div class="sechint" id="sechint">
+      <span>sektör:</span>
+      <span><b class="p">mor</b> seansta en hızlı</span>
+      <span><b class="g">yeşil</b> kendi en iyisi</span>
+      <span><b class="y">sarı</b> kendi en iyisinden yavaş</span>
+      <span>renksiz = tur tamamlanmadı, karşılaştırılamaz</span>
+      <!-- Mini çubukların açıklaması. Süre değil durum olduğunu söylemek
+           zorunlu: aksi hâlde çubuk uzunluğundan zaman kaybı okunmaya çalışılır. -->
+      <span title="Sektör süresinin altındaki ince çubuklar mini sektörler (her sektörün alt bölümleri). Süre yayınlanmadığı için uzunluk değil yalnız renk anlamlı.">mini çubuk: <b class="p">mor</b> seans en iyisi · <b class="g">yeşil</b> kişisel en iyi · <b class="y">sarı</b> gelişme yok</span>
+      <!-- Hangi turun sektörleri? Varsayılan "son tur" -- yarış sırasında doğru
+           olan bu. Seans bittiğinde son turlar ısınma/soğutma turu olur ve bütün
+           sütun sarı kalır; o zaman "en iyi tur" seçilince gerçek tempo ve mor
+           sektörler görünür. Seans bitmişse varsayılan otomatik "en iyi tur". -->
+      <button type="button" id="sectoggle" class="sechintbtn" title="Sektörler hangi turdan?">sektörler: son tur</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <!-- TEAM kolonu kaldırıldı: takım adı sürücünün yanındaki renk
+               çubuğunda zaten var, ve sütun telefonda en geniş yeri yiyordu. -->
+          <th>P</th><th>DRV</th><th>GRID</th><th>GAP</th><th>INT</th><th>LAP</th>
+          <th>LAST</th><th>BEST</th><th>MED8</th><th>TREND</th><th>TYRE</th><th>PIT</th>
+          <!-- Sector splits. They were already in the snapshot (attached by
+               analysis.attach_live_sectors) but no surface showed them, so
+               "nerede zaman kaybetti" could only be answered by the model, never
+               read off the table. The colour is the F1 convention; the verdict
+               is computed on the server (analysis._sector_status). -->
+          <th class="sechdr">S1</th><th class="sechdr">S2</th><th class="sechdr">S3</th>
+          <th class="sechdr">IDEAL</th><th class="sechdr">LOSS</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="17" style="text-align:center;color:#8b98a9;padding:26px">veri bekleniyor…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="rcpanel"><h4>Race Control</h4><div id="rc"></div></div>
+    <!-- Telefonda "Geçici puan durumu" buraya taşınır (JS, hoistProv).
+         Panelin içinde kalınca alt sekme çubuğu 30px yer yiyordu ve
+         telefonun dar yüksekliğinde mesaj alanından çalıyordu. Masaüstünde
+         boş kalır: orada panelin içinde, sekmeli hâli doğru. -->
+    <div id="provslot" hidden></div>
+  </section>
+  <section id="chat" class="collapsed">
+    <!-- Telefon tutamağı. Masaüstünde gizli, telefonda panelin tepesinde 46px'lik
+         şerit: kapalıyken son cevabın ilk satırını gösterir, dokununca paneli
+         açar. Panelin neden katlanır olduğu: yarış sırasında tabloyu izlerken
+         cevabın geldiğini görmek istiyorsun, bunu kapalıyken sadece bu şerit
+         söyleyebilir. -->
+    <button type="button" id="grip" aria-expanded="false" aria-controls="pane-assist">
+      <span class="chev" aria-hidden="true">▴</span>
+      <span class="glabel">Asistan</span>
+      <span class="gprev" id="gprev">soru sor · cevap burada görünür</span>
+    </button>
+    <div class="subtabs" role="tablist">
+      <button type="button" role="tab" id="tab-assist" class="on" aria-controls="pane-assist" aria-selected="true">Asistan</button>
+      <button type="button" role="tab" id="tab-points" aria-controls="pane-points" aria-selected="false">Geçici puan durumu</button>
+    </div>
+    <div id="chathead">
+      <div>
+        <div class="t">Strategi Asistanı</div>
+        <div class="s" id="chatsub">canlı veriyle · sohbet sunucuda saklanır</div>
+      </div>
+      <label class="rsel" title="Reasoning seviyesi — 'kapalı' en hızlısı, 'yüksek' en derin analiz">
+        <span>düşünme</span>
+        <select id="rlvl">
+          <option value="off">kapalı</option>
+          <option value="minimal">min</option>
+          <option value="low">düşük</option>
+          <option value="medium">orta</option>
+          <option value="high">yüksek</option>
+        </select>
+      </label>
+      <button type="button" id="aibtn" title="AI sağlayıcı ve model seç — kendi anahtarını gir">⚙ AI</button>
+      <button type="button" id="pref" title="Asistanın sohbetten öğrendiği kalıcı tercihler — tıkla: sıfırla">tercih: —</button>
+      <button type="button" id="clear" title="Bu yarışın sohbet geçmişini sunucudan sil">temizle</button>
+    </div>
+    <div id="pane-assist">
+      <div id="msgs"></div>
+      <div class="chips" id="chips"></div>
+      <div id="usagebar" title="Son cevapların gerçek token maliyeti (sağlayıcının usage bloğundan, tahmin değil)">token: —</div>
+      <form id="f">
+        <textarea id="q" placeholder="Örn: LEC VER'i yakalar mı? · kapsam için @fp1 @fp2 @q @sq @sp @race @all"></textarea>
+        <button id="send">Sor</button>
+      </form>
+      <!-- Sohbetin altındaki veri satırı. Arşivde de aynı yerde aynı ölçüde
+           var; iki yüzey yan yana konunca alt bilgi alanları hizalı olsun.
+           Ayrıca telefonda bu bilgi BAŞKA YERDE YOK: `#stamp` başlıkta ve
+           `.head-info.optional` 640px altında gizli, yani mobilde hangi veriyle
+           konuştuğun yazmıyordu. -->
+      <div id="srcline">Veri: bağlanıyor…</div>
+      <div id="legal">Resmî olmayan, bağımsız bir proje. Formula 1, FIA veya Formula One Management ile ilişkili değildir. F1, FORMULA 1 ve ilgili işaretler Formula One Licensing B.V.'nin ticari markalarıdır. Veri kaynakları kendi lisanslarına tabidir (bkz. README).</div>
+    </div>
+
+    <div id="pane-points" hidden>
+      <div class="pbody">
+        <div id="pnotice"></div>
+        <div class="pmeta" id="pmeta"></div>
+        <div class="plist" id="plist">
+          <div class="pempty">paylaşılan veri bekleniyor…</div>
+        </div>
+        <div class="pfoot">
+          Sıra değiştikçe canlı güncellenir. Bu tablo <b>kesinleşmiş değil</b>:
+          yarış biterse bu sırayla alınacak puanları gösterir.
+        </div>
+      </div>
+    </div>
+  </section>
+<!-- AI sağlayıcı/model seçimi. Neden ayrı bir diyalog ve neden sunucu tarafı:
+     bu kurulumu ikinci bir kişi kullanırsa kendi sağlayıcısını ve anahtarını
+     seçebilmeli; anahtar veritabanında durur, tarayıcıya ASLA geri dönmez
+     (yalnız son 4 karakter). İki sohbet yüzeyi (canlı + arşiv) ayrı süreçler
+     olduğu için ayar `/api/ai` üzerinden okunur/yazılır. -->
+<dialog id="aidlg" aria-labelledby="aititle">
+  <form method="dialog" class="aiform" id="aiform">
+    <h3 id="aititle">AI sağlayıcı ve model</h3>
+    <p class="aihint" id="aihint">—</p>
+    <label>Etiket <input id="ailabel" type="text" placeholder="ör. kendi OpenRouter'ım" autocomplete="off"></label>
+    <label>Base URL <input id="aibase" type="url" placeholder="https://.../v1" autocomplete="off" spellcheck="false"></label>
+    <label>Model <input id="aimodel" type="text" placeholder="ör. gpt-4o-mini, llama3.1:8b" autocomplete="off" spellcheck="false"></label>
+    <label>API anahtarı <input id="aikey" type="password" placeholder="boş bırak = kayıtlı anahtar korunur" autocomplete="new-password"></label>
+    <p class="ainote">Anahtar sunucuda saklanır ve tarayıcıya geri gönderilmez.</p>
+    <div class="aiactions">
+      <button type="button" id="aitest">Bağlantıyı test et</button>
+      <button type="button" id="aisave" class="primary">Kaydet</button>
+      <button type="button" id="aidel" class="danger">Sil</button>
+      <button type="submit" value="close" class="ghost">Kapat</button>
+    </div>
+    <div class="aistatus" id="aistatus" role="status" aria-live="polite"></div>
+    <ul class="ailist" id="ailist"></ul>
+  </form>
+</dialog>
+
+</main>
+<script src="static/shell.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+
+// SNAP = last rendered, LIVE = last streamed live frame (kept while browsing the archive)
+let SNAP = null, LIVE = null, hist = [], busy = false;
+let VIEW = {mode:"live", id:null, lap:null, laps:[], race:null};
+let LIVE_RACE_ID = null;
+
+/* ---------- reasoning preference (a setting, not history: localStorage is fine) ---------- */
+const RKEY = "f1dash.reasoning";
+const rsel = $("#rlvl");
+const rwrap = rsel.closest(".rsel");
+function currentLevel(){ return rsel.value; }
+function syncLevelUI(){ rwrap.classList.toggle("off", rsel.value === "off"); }
+rsel.value = localStorage.getItem(RKEY) || "low";
+syncLevelUI();
+rsel.addEventListener("change", () => {
+  localStorage.setItem(RKEY, rsel.value);
+  syncLevelUI();
+  // Server-side copy: a new browser (or the archive surface) keeps the same level.
+  fetch("api/prefs", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({key:"reasoning", value:rsel.value})}).catch(()=>{});
+});
+
+/* ---------- learned preferences (server-side, shared with the archive) ---------- */
+/* The assistant learns output shape from the conversation ("süreyi dakika saniye
+   olarak ver" -> time_format=mmss, "liste halinde" -> answer_style=list) and stores
+   it in the database, so it never has to be repeated and never dies with this
+   browser profile. The badge shows what it currently believes; click = forget. */
+function renderPrefs(summary){
+  const el = $("#pref");
+  const on = !!(summary && summary.trim());
+  el.textContent = on ? summary : "tercih: —";
+  el.classList.toggle("on", on);
+  el.title = on
+    ? "Öğrenilen kalıcı tercihler: " + summary + " — tıkla: sıfırla"
+    : "Henüz tercih öğrenilmedi. 'süreyi dakika saniye olarak ver' gibi yaz, kendisi kaydeder.";
+}
+async function loadPrefs(){
+  try{ renderPrefs((await apiJSON("api/prefs")).summary); }
+  catch(e){ console.warn("prefs", e); }
+}
+/* ---------- token / context / cost visibility ---------- */
+/* Every number here comes from the provider's own `usage` block (nothing is
+   estimated), so "ne kadar token harcadı" has one honest answer per answer and one
+   aggregate per race. The aggregate is served by /api/usage and shared by both
+   surfaces, so the live tab and the archive tab never disagree. */
+const fmtT = n => n == null ? "—" : (n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n));
+/* A cut-off answer must LOOK cut off, but "devam et" is only honest when there
+   is something to continue. A thinking answer that burned its whole budget and
+   wrote nothing has no half-sentence to resume, so it says so instead of
+   offering a retry that would hit the same wall. */
+function cutNote(m, ans){
+  if(!m) return "";
+  const empty = !ans || ans === "(boş cevap)";
+  if(m.rescued && !m.truncated)
+    return `<span class="meta warn">⚠ düşünme bütçesi yetmedi, hızlı modda cevaplandı</span>`;
+  if(!m.truncated) return "";
+  if(empty)
+    return `<span class="meta warn">⚠ düşünme bütçesini tüketti, cevap yazamadı — soruyu daraltmayı dene ("devam et" burada işe yaramaz)</span>`;
+  return `<span class="meta warn">⚠ cevap ${m.max_tokens} token limitinde kesildi — "devam et" dersen kaldığı yerden sürdürürüm</span>`;
+}
+
+function usageBits(m){
+  const b = [];
+  if(m.level) b.push("düşünme: " + m.level);
+  if(m.prompt_tokens != null) b.push("context " + fmtT(m.prompt_tokens));
+  if(m.cached_tokens && m.prompt_tokens)
+    b.push("cache %" + Math.round(100 * m.cached_tokens / m.prompt_tokens));
+  if(m.completion_tokens != null) b.push("cevap " + m.completion_tokens + "/" + (m.max_tokens || "—"));
+  if(m.reasoning_tokens) b.push("rtok " + m.reasoning_tokens);
+  if(m.history_total && m.history_sent != null && m.history_total !== m.history_sent)
+    b.push("geçmiş " + m.history_sent + "/" + m.history_total);
+  return b;
+}
+async function loadUsage(){
+  try{
+    const u = await apiJSON("api/usage");
+    renderUsage(u);
+  }catch(e){ console.warn("usage", e); }
+}
+function renderUsage(u){
+  const el = $("#usagebar");
+  if(!el) return;
+  if(!u || !u.calls){ el.textContent = "token: henüz cevap yok"; return; }
+  const bits = [
+    `<span>son <b>${u.calls}</b> cevap</span>`,
+    `<span>context ort. <b>${fmtT(u.avg_prompt)}</b></span>`,
+    `<span>girdi <b>${fmtT(u.prompt_tokens)}</b> (cache %${u.cache_pct ?? 0})</span>`,
+    `<span>çıktı <b>${fmtT(u.completion_tokens)}</b></span>`
+  ];
+  if(u.truncated) bits.push(`<span class="warn">kesilen ${u.truncated}</span>`);
+  if(u.credits_cr != null) bits.push(`<span class="money">kredi ${u.credits_cr}</span>`);
+  el.innerHTML = bits.join("");
+}
+
+$("#pref").addEventListener("click", async () => {
+  if(!confirm("Öğrenilen tercihler silinsin mi? (süre biçimi, liste/tablo, dil, düşünme)")) return;
+  try{ await apiJSON("api/prefs", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({reset:true})}); }catch(e){ console.warn(e); }
+  loadPrefs();
+});
+
+/* ---------- helpers ---------- */
+const esc = t => (t ?? "").toString().replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// Ortak sürüm shell.js'te: HTML gövdesini hata mesajı yapmıyor.
+const apiJSON = F1.fetchJSON;
+// Markdown biçimlendirici de ortak: iki yüzey ayrı kopya tutunca arşivde
+// `**BEA**` ham görünüyordu.
+const fmt = F1.fmt;
+
+function tyreCell(r){
+  if(!r.tyre) return '<span style="color:#5a6675">—</span>';
+  const c = (r.tyre||"UNKNOWN").toUpperCase();
+  const short = c === "UNKNOWN" ? "?" : c === "INTERMEDIATE" ? "I" : c === "WET" ? "W" : c[0];
+  return `<span class="tyre"><span class="dot ${c}"></span>${short}${r.tyre_age?` <span style="color:#8b98a9">(${r.tyre_age})</span>`:''}</span>`;
+}
+function raceLabel(r){
+  const p = (r.start_date||"").slice(0,10).split("-");
+  const ds = p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : "";
+  let s = [r.meeting || "?", r.session || "", ds].filter(Boolean).join(" · ");
+  if(r.n_chat) s += ` · ${r.n_chat} mesaj`;
+  return s;
+}
+
+/* Sector cell with the shared three-way status ("p"/"g"/"y").
+ * The status is NOT recomputed here: analysis._sector_status already decided it
+ * on the server, and a second comparison in the browser is how two surfaces end
+ * up colouring the same number differently. A snapshot without s_status (an old
+ * stored frame) degrades to a plain number rather than to a wrong colour. */
+/* Üç sektör hücresi, seçilen kaynaktan. `en iyi tur` seçiliyken hangi tur
+ * olduğunu tooltip söyler (b_lap); veri yoksa son tura düşer ve bunu gizlemez. */
+/* Ceza rozeti. Sürücü kodunun hemen yanında, çünkü bir ceza SÜRÜCÜYE aittir ve
+ * tabloda aranan yer orasıdır. Üç ayrı görünüm, üç ayrı anlam:
+ *
+ *   +5s         -> ceza, henüz çekilmedi (amber: dikkat)
+ *   +10s çekildi-> ceza verildi ve çekildi (soluk: bilgi)
+ *   inceleme    -> sadece İNCELEME var, ceza DEĞİL (mavi: karar değil)
+ *
+ * "inceleme"yi ceza gibi göstermemek kasıtlı: hakemler incelemeyi cezasız
+ * kapatabilir, ve bir sürücüyü cezalı göstermek yanlış bir iddiadır. */
+function penaltyBadge(r){
+  const t = String(r.penalty || "").trim();
+  if(!t) return "";
+  let cls = "pen";
+  if(r.penalty_secs || /ceza|s$|DT|SG|DSQ/i.test(t)) {
+    cls += r.penalty_served ? " done" : " live";
+  } else {
+    cls += " review";
+  }
+  const tip = r.penalty_served
+    ? "Ceza verildi ve çekildi: " + t
+    : (/inceleme|review/.test(t) ? "Hakem incelemesi — ceza DEĞİL, henüz karar yok"
+                                 : "Ceza verildi, henüz çekilmedi: " + t);
+  return ` <span class="${cls}" title="${esc(tip)}">${esc(t)}</span>`;
+}
+
+function secCells(r, useBest){
+  if(useBest && r.bs1 != null){
+    const tipPartial = false;
+    return secCell(r.bs1, 0, r.b_status, tipPartial, r.b_lap, r.b_segs)
+         + secCell(r.bs2, 1, r.b_status, tipPartial, r.b_lap, r.b_segs)
+         + secCell(r.bs3, 2, r.b_status, tipPartial, r.b_lap, r.b_segs);
+  }
+  return secCell(r.s1, 0, r.s_status, r.sector_partial, null, r.segs)
+       + secCell(r.s2, 1, r.s_status, r.sector_partial, null, r.segs)
+       + secCell(r.s3, 2, r.s_status, r.sector_partial, null, r.segs);
+}
+
+/* Mini sektör kodu -> çubuk sınıfı. Eşleme kodun GERÇEK anlamıdır
+ * (analysis._SEG_NAME ile aynı): 2049 seans en iyisi, 2048 kişisel en iyi,
+ * 2051 gelişme yok. Mini sektör SÜRESİ hiçbir kaynakta yok, bu yüzden çubuk
+ * bir süre değil bir durum gösterir ve uzunluğu hiçbir şey ifade etmez.
+ * Kod 0 "veri yok" demek (feed kuyruğu sıfırla dolduruyor): yeri korunur,
+ * boyanmaz. Eşlemede olmayan kodlar (arşivde 2064/2050/2052 görüldü) soluk
+ * gri kalır -- uydurulmuş bir renk, olmayan bir ölçümü varmış gibi gösterirdi. */
+const SEG_CLS = {2049: "mp", 2048: "mg", 2051: "my", 0: "m0"};
+/* `segs[i]` o sektörün mini sektör kodları, CSV ("2048,2051,2048"). Kod yoksa
+ * çubuk hiç çizilmez: boş gri bir şerit "hepsi gelişme yok" gibi okunurdu. */
+function miniBars(segs, i){
+  const raw = segs && segs[i];
+  if(raw == null || raw === "") return "";
+  const parts = String(raw).split(",");
+  if(!parts.some(p => String(p).trim() !== "")) return "";
+  const bars = parts.map(p => {
+    const k = parseInt(String(p).trim(), 10);
+    return `<i class="${SEG_CLS[k] || "mn"}"></i>`;
+  }).join("");
+  const tip = "Mini sektörler: mor = seans en iyisi, yeşil = kişisel en iyi, "
+            + "sarı = gelişme yok. Süre yayınlanmıyor, yalnız durum var.";
+  return `<span class="mini" title="${tip}">${bars}</span>`;
+}
+
+/* Sektör hücresi. Dördüncü argüman `partial`: o sürücünün sektörleri henüz
+ * TAMAMLANMIŞ bir tura ait değil (feed sektörü tur biterken yayınlıyor, yani o
+ * turun üç sektörü bir arada olmayabilir). Böyle hücreler renksiz kalır ve
+ * tooltip sebebini söyler -- aksi hâlde "hepsi sarı" bir sütun, sürücünün kötü
+ * gittiği izlenimini verir; oysa karşılaştırma yapılamıyor demektir. */
+function secCell(v, i, status, partial, lapNo, segs){
+  if(v == null || !isFinite(v)) return `<td class="sec na">—</td>`;
+  const cls = (status && status[i]) ? " s-" + status[i] : "";
+  const what = status && status[i] === "p" ? "Seansta bu sektörün en hızlısı"
+    : status && status[i] === "g" ? "Sürücünün kendi en hızlısı"
+    : status && status[i] === "y" ? "Sürücünün kendi en iyisinden yavaş" : "";
+  let tip = what ? ` title="${what}"` : "";
+  if(lapNo != null) tip = ` title="${what ? what + ' — ' : ''}tur ${lapNo} (en iyi tur)"`;
+  else if(partial) tip = ' title="Bu tur henüz tamamlanmadı: sektörler karşılaştırılamaz"';
+  return `<td class="sec${cls}${partial ? " part" : ""}"${tip}><span class="sv">${Number(v).toFixed(3)}</span>${miniBars(segs, i)}</td>`;
+}
+
+/* ---------- sektör kaynağı: son tur / en iyi tur ----------
+ *
+ * Hangi turun sektörleri gösterilecek? İkisi de gerçek, ama farklı soruları
+ * cevaplıyor:
+ *
+ *   son tur  -> "şu an ne yapıyor?" Yarış sırasında doğru olan bu: son turun
+ *               sektörleri, canlı tempo.
+ *   en iyi tur -> "tempo ne?" Seans BİTTİĞİNDE son turlar ısınma/soğutma turu
+ *               olur ve bütün sütun sarı kalır; Meksika sıralamasının sonunda
+ *               ölçüldü: 23 sektörün 23'ü sarı, saha en iyisi 26.768 iken
+ *               ekrandaki S1'ler 31-44 arasındaydı. Mor hiç görünemezdi.
+ *
+ * Varsayılan: seans sürüyorsa "son tur", bittiyse "en iyi tur". Kullanıcı
+ * düğmeyle değiştirebilir; seçim oturum boyunca hatırlanır.
+ */
+const SECT_KEY = "f1dash.sectorSrc";
+let sectorSrc = localStorage.getItem(SECT_KEY) || null;   // null = otomatik
+
+function sectorAuto(s){
+  const running = /start/i.test(String(s && s.status || "")) && !/finish|ends/i.test(String(s && s.status || ""));
+  return running ? "last" : "best";
+}
+function sectorUse(s){
+  return sectorSrc || sectorAuto(s);
+}
+function syncSectorToggle(s){
+  const btn = $("#sectoggle");
+  if(!btn) return;
+  const u = sectorUse(s);
+  const anyBest = (s && s.rows || []).some(r => r.bs1 != null);
+  btn.textContent = "sektörler: " + (u === "best" ? "en iyi tur" : "son tur");
+  btn.classList.toggle("on", u === "best");
+  btn.disabled = u === "best" && !anyBest;
+  btn.title = u === "best"
+    ? "Her sürücünün EN İYİ turunun sektörleri — tempo karşılaştırması için doğru olan"
+    : "Sürücülerin SON turunun sektörleri — yarış sırasında canlı durum";
+}
+
+/* ---------- table rendering (live + archive share this) ---------- */
+function render(s, archived){
+  SNAP = s;
+  const st = (s.status||"").toLowerCase();
+  const b = $("#status");
+  b.textContent = s.status || "?";
+  b.className = "badge" + (archived ? " arch" : st.includes("started") ? " live" : st.includes("finish")||st.includes("ends") ? " clear" : "");
+  const tr = $("#track");
+  tr.textContent = (s.track||"—");
+  tr.className = "badge" + ((s.track||"").toLowerCase().includes("clear") ? " clear" : "");
+  /* The header must not call a practice session "Lap 56/56": outside a race the
+     lap counter is a session-clock tick, and there is no race distance. The
+     session kind comes from the server (points.session_type) so the page and the
+     assistant never disagree about what is being shown. */
+  const stype = s.session_type || {};
+  const isRace = stype.has_race_distance !== false ? (s.total != null) : false;
+  const where = isRace
+    ? `Tur ${s.lap??"?"}/${s.total??"?"}`
+    : (s.field_laps != null ? `Sahada ${s.field_laps} tur` : "seans");
+  const clock = s.countdown ? ` · ⏱ ${s.countdown}` : "";
+  $("#meeting").textContent =
+    `${s.meeting||""} · ${s.session||""}${stype.label ? " ("+stype.label+")" : ""} · ${where}${clock}`;
+  $("#weather").textContent = s.air!=null ? `hava ${s.air}°C · pist ${s.track_temp}°C · nem ${s.humidity}% · yağış ${s.rain}` : "";
+  $("#stamp").textContent = archived
+    ? `arşiv kaydı · ${(s.updated||"").slice(11,19)}Z`
+    : (s.ok ? `feed ${(s.updated||"").slice(11,19)}Z · ${s.server_time}` : `feed yok: ${s.err||""}`);
+  /* Sohbetin altındaki satır. `#stamp` ile aynı gerçeği söylüyor ama
+     telefonda görünen tek yer burası (başlıktaki .head-info.optional 640px
+     altında gizli). Arşivdeki ile aynı cümle kalıbı: "Veri: tur N · ...". */
+  const srl = $("#srcline");
+  if (srl) {
+    const stype2 = s.session_type || {};
+    const tur = (stype2.has_race_distance === false || s.total == null)
+      ? (s.countdown ? `Kalan ${s.countdown}` : `Veri: seans`)
+      : `Veri: tur ${s.lap ?? "?"}`;
+    srl.textContent = archived
+      ? `${tur} · arşiv kaydı (canlı yakalama)`
+      : (s.ok
+          // `updated` yoksa "feed Z" gibi yarım bir damga yazma: saati
+          // uydurmak yerine yalnız "canlı yayın" de.
+          ? `${tur} · canlı yayın` + (s.updated ? ` · feed ${s.updated.slice(11,19)}Z` : "")
+          : `${tur} · feed yok: ${s.err||"bilinmiyor"}`);
+  }
+  if(s.rows?.length){
+    /* Hangi turun sektörleri: kullanıcı seçimi, yoksa seans durumuna göre
+       otomatik (sürüyorsa son tur, bittiyse en iyi tur). Bkz. sectorUse(). */
+    const useBest = sectorUse(s) === "best";
+    syncSectorToggle(s);
+    $("#rows").innerHTML = s.rows.map(r => {
+      const leader = r.pos===1;
+      return `<tr>
+        <td class="pos">${r.pos}</td>
+        <td class="drv"><span class="tla-bar" style="background:#${r.color||'666'}"></span>${esc(r.code)}${penaltyBadge(r)}</td>
+        <td>${r.grid ?? "-"}</td>
+        <td class="gap ${leader?'leader':''}">${esc(r.gap)}</td>
+        <td>${esc(r.int)}</td>
+        <td>${r.laps ?? ""}</td>
+        <td>${esc(r.last)}</td>
+        <td>${esc(r.best)}</td>
+        <td>${r.med8 ?? ""}</td>
+        <td>${r.trend!=null ? r.trend.toFixed(2) : ""}</td>
+        <td>${tyreCell(r)}</td>
+        <td class="pit">${r.pit ?? ""}</td>
+        ${secCells(r, useBest)}
+        <td class="sec">${r.ideal != null ? r.ideal.toFixed(3) : "—"}</td>
+        <td class="sec${r.loss != null && r.loss < 0.3 ? " s-g" : (r.loss != null && r.loss > 1.0 ? " s-y" : "")}">${r.loss != null ? (r.loss > 0 ? "+" : "") + r.loss.toFixed(3) : "—"}</td>
+      </tr>`;
+    }).join("");
+  } else {
+    $("#rows").innerHTML = '<tr><td colspan="17" style="text-align:center;color:#8b98a9;padding:26px">veri yok</td></tr>';
+  }
+  $("#rc").innerHTML = (s.rc?.length)
+    ? s.rc.slice(-14).reverse().map(m => `<div class="rcmsg"><b>L${m.lap??"-"}</b> ${esc(m.msg)}</div>`).join("")
+    : "";
+  renderChips(s);
+  renderProvisional(s.standings, s);
+}
+
+let chipsKey = "";
+function renderChips(s){
+  const lead = s.rows?.[0]?.code, second = s.rows?.[1]?.code;
+  const list = [
+    `${second||"P2"} ${lead||"lider"}i yakalar mı?`,
+    "Şu an en hızlı kim, farkı ne?",
+    "Kimin pit stop'u kaldı, undercut riski var mı?",
+    "Lastik aşınmasına göre son 10 tur nasıl geçer?"
+  ];
+  const key = list.join("|");
+  if(key===chipsKey) return;
+  chipsKey = key;
+  $("#chips").innerHTML = list.map(t => `<span class="chip">${esc(t)}</span>`).join("");
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { $("#q").value = c.textContent; send(); });
+}
+
+/* ---------- provisional championship panel ----------
+ *
+ * During a race the season table is not final, but "if the race ended now" is a
+ * real, answerable question -- and it changes every time a position changes.
+ * The server computes it (points.py); this only draws it. Rules kept here:
+ *
+ *   - a projection the server refused renders the refusal, never a table;
+ *   - a driver missing from the base table is listed as unmatched, not merged
+ *     into somebody else's row;
+ *   - ties share a rank and say so (official countback is not ours to claim).
+ */
+const TEAM_COLOR = {
+  mercedes: "#27f4d2", ferrari: "#e80020", red_bull: "#3671c6", mclaren: "#ff8000",
+  aston_martin: "#229971", alpine: "#ff87bc", williams: "#64c4ff", rb: "#6692ff",
+  sauber: "#52e252", haas: "#b6babd", cadillac: "#c8a45a", audi: "#f50537"
+};
+const teamColor = id => TEAM_COLOR[String(id || "").toLowerCase()] || "#5f6b7a";
+
+let PROV_OPEN = false;
+
+/* Telefonda "Geçici puan durumu" panelin DIŞINA taşınır.
+ *
+ * Sebep: panel içinde iki alt sekme 30px'lik bir çubuk demek ve telefonun dar
+ * yüksekliğinde o 30px doğrudan mesaj alanından çalıyor. Üstelik sekme
+ * mantığı telefonda anlamsız: sohbet zaten sabit panelde, geçici tablo ise
+ * arada bir bakılan bir özet -- tablonun/Race Control'ün altında, sayfa
+ * akışında durması daha doğru.
+ *
+ * DOM taşınıyor, kopyalanmıyor: renderProvisional() tek bir #plist'e yazmaya
+ * devam ediyor, iki kopya tutma riski yok.
+ */
+let PROV_AT = "panel";
+function hoistProv(){
+  const pane = $("#pane-points"), slot = $("#provslot"), tabs = document.querySelector(".subtabs");
+  if (!pane || !slot || !tabs) return;
+  const mobile = matchMedia("(max-width: 640px)").matches;
+  const want = mobile ? "slot" : "panel";
+  if (want === PROV_AT) return;
+  if (want === "slot") {
+    slot.appendChild(pane);
+    slot.hidden = false;
+    pane.hidden = false;          // akışta, sekmesiz: her zaman görünür
+    tabs.hidden = true;           // sekme çubuğu panelden kalkar
+    refreshProvisional();
+  } else {
+    // Geri taşırken pane'i #chat içine, #pane-assist'in hemen ardına koy:
+    // paneldeki özgün sıra bu.
+    $("#pane-assist").after(pane);
+    slot.hidden = true;
+    tabs.hidden = false;
+    pane.hidden = !PROV_OPEN;     // masaüstünde sekme mantığı geçerli
+  }
+  PROV_AT = want;
+}
+
+function setPane(which){
+  PROV_OPEN = which === "points";
+  $("#tab-assist").classList.toggle("on", !PROV_OPEN);
+  $("#tab-points").classList.toggle("on", PROV_OPEN);
+  $("#tab-assist").setAttribute("aria-selected", String(!PROV_OPEN));
+  $("#tab-points").setAttribute("aria-selected", String(PROV_OPEN));
+  $("#pane-assist").hidden = PROV_OPEN;
+  // Telefonda pane panelin dışında yaşıyor; orada gizlenmemeli.
+  if (PROV_AT === "panel") $("#pane-points").hidden = !PROV_OPEN;
+  if (PROV_OPEN) refreshProvisional();
+}
+
+function provRow(r, prevOrder){
+  const gained = Number(r.race_points) || 0;
+  // Only a real change gets a marker: an unchanged row with a dash on it reads
+  // as "lost nothing", which is a different claim from "did not move".
+  const move = r.rank_change;
+  const mv = (move == null || move === 0) ? "" :
+    (move > 0 ? `<span class="mv up" title="taban sırasına göre ${move} sıra yukarı">▲${move}</span>`
+              : `<span class="mv down" title="taban sırasına göre ${Math.abs(move)} sıra aşağı">▼${Math.abs(move)}</span>`);
+  const tie = r.tie
+    ? `<span class="mv flat" title="eşit puan — resmî tie-break (en iyi derece sayımı) elimizde yok, bu yüzden aynı sıra">=</span>`
+    : "";
+  const col = teamColor(r.team_id);
+  return `<div class="prow ${prevOrder === 1 ? "lead" : ""}">
+    <div class="rk ${r.tie ? "tie" : ""}">${r.tie ? r.tie_rank : r.rank}${tie}</div>
+    <div class="sw" style="background:${col}"></div>
+    <div class="who"><span class="c">${esc(r.label || r.key)}</span>
+      <span class="base">${r.base_points}</span>${mv}</div>
+    <div class="gain ${gained ? "up" : "flat"}">${gained ? "+" + gained : "—"}</div>
+    <div class="tot">${r.total}</div>
+  </div>`;
+}
+
+function renderProvisional(st, snap){
+  if (!st) return;
+  const p = st.provisional;
+  const box = $("#plist");
+  if (!p) {
+    // The server refused to project. Say why; draw nothing else.
+    // A finished session and a refused projection are different situations and
+    // must read differently: one means "nothing is running", the other means
+    // "we cannot project without inventing a base".
+    const done = st.finished;
+    $("#pnotice").innerHTML = `<div class="notice${done ? "" : " danger"}"><span class="ico">${done ? "✓" : "⚠"}</span><div>
+      <b>${done ? "Seans bitti — geçici tablo kapandı." : "Geçici puan durumu yok."}</b>
+      ${esc(st.reason || "gerekçe bildirilmedi")}.${st.detail
+        ? ` <span style="color:var(--faint)">(${esc(st.detail)})</span>` : ""}</div></div>`;
+    $("#pmeta").innerHTML = "";
+    box.innerHTML = `<div class="pempty">Bu yarış için projeksiyon üretilemiyor.
+      Sezonun resmî tablosu
+      <a href="${esc(F1.surfaceUrl(8101))}" style="color:var(--dim)">puan durumu</a>
+      sayfasında; taban tablo oradan <b>Yenile</b> ile tazelenir.</div>`;
+    return;
+  }
+
+  const kindLabel = p.kind === "sprint" ? "sprint puanı (8-7-6-5-4-3-2-1)"
+                                        : "yarış puanı (25-18-15-12-10-8-6-4-2-1)";
+  $("#pnotice").innerHTML = `<div class="notice"><span class="ico">◐</span><div>
+    <b>Yarış sürüyor · yarış sonu sırası bu olursa</b> — ${esc(kindLabel)}.
+    Sıra değiştikçe tablo canlı güncellenir.</div></div>`;
+  $("#pmeta").innerHTML =
+    `tur <b>${p.lap ?? "?"}${p.total_laps ? "/" + p.total_laps : ""}</b> · ` +
+    `taban: <b>${p.base_round != null ? p.base_round + ". tur resmî puanlar" : "resmî puanlar"}</b>` +
+    (p.base_fetched_at ? ` (${esc(F1.whenText(p.base_fetched_at))})` : "") +
+    (st.error ? ` · <span class="warn">taban tazelenemedi: ${esc(st.error)}</span>` : "");
+
+  const prevOrder = {};
+  p.drivers.forEach(d => { if (d.base_position != null) prevOrder[d.key] = d.base_position; });
+  box.innerHTML = p.drivers.map(d => provRow(d, prevOrder[d.key])).join("");
+
+  if (p.unmatched && p.unmatched.length) {
+    box.innerHTML += `<div class="notice" style="margin-top:9px"><span class="ico">⚠</span><div>
+      <b>${esc(p.unmatched.join(", "))}</b> bu yarışta sırada ama taban tabloda yok.
+      Puanı verildi (<b>${p.awarded}</b> toplam), tabloya <b>eklenmedi</b> — kimin satırı olduğu uydurulmaz.</div></div>`;
+  }
+
+  const cons = p.constructors;
+  if (cons && cons.length) {
+    box.innerHTML += `<div class="psub">Markalar (bu sırayla)</div>` +
+      cons.map(c => `<div class="prow">
+        <div class="rk">${c.rank}</div>
+        <div class="sw" style="background:${teamColor(c.key)}"></div>
+        <div class="who"><span class="c" style="font-family:var(--font-body);font-size:11.5px">${esc(c.name || c.key)}</span>
+          <span class="base">${c.base_points}</span></div>
+        <div class="gain ${c.race_points ? "up" : "flat"}">${c.race_points ? "+" + c.race_points : "—"}</div>
+        <div class="tot">${c.total}</div>
+      </div>`).join("");
+  }
+}
+
+/* The panel can be open while the race is not: ask once on open, and let the
+   SSE frames keep it current afterwards. */
+async function refreshProvisional(){
+  if (!PROV_OPEN) return;
+  try {
+    const d = await apiJSON("api/standings/provisional");
+    renderProvisional({provisional: d.provisional, reason: d.reason,
+                       base: d.base, error: d.error, finished: d.finished,
+                       detail: d.detail}, SNAP);
+  } catch(e) {
+    $("#pnotice").innerHTML = `<div class="notice danger"><span class="ico">✕</span><div>
+      Geçici tablo alınamadı: ${esc(String(e).slice(0,160))}</div></div>`;
+  }
+}
+
+// Sekmeye dokunmak paneli de açar: telefonda kapalı panelin sekmesine
+// ulaşmanın başka yolu yok (sekme çubuğu panelin içinde).
+$("#tab-assist").addEventListener("click", () => { setPane("assist"); sheetSet(true); });
+$("#tab-points").addEventListener("click", () => { setPane("points"); sheetSet(true); });
+
+/* ---------- chat (server-side transcript, one per race) ---------- */
+function chatTarget(){ return VIEW.mode === "archive" ? String(VIEW.id) : "live"; }
+function chatLabel(){
+  if(VIEW.mode === "archive"){
+    const r = VIEW.race || {};
+    return `geçmiş yarış · ${(r.meeting||"")} ${(r.session||"")} — bu sohbet arşivde saklanır`.trim();
+  }
+  return "canlı veriyle · sohbet sunucuda saklanır (tarayıcı temizlense de durur)";
+}
+function addMsg(role, text, meta){
+  const d = document.createElement("div");
+  d.className = "m " + role;
+  d.innerHTML = fmt(text) + (meta ? `<span class="meta">${esc(meta)}</span>` : "");
+  $("#msgs").appendChild(d);
+  $("#msgs").scrollTop = $("#msgs").scrollHeight;
+  // Asistanın son sözü tutamağa yansır. Kullanıcının kendi mesajı değil:
+  // şerit "cevap geldi mi" sorusunu yanıtlamak için var.
+  if (role === "bot" || role === "assistant") sheetPreview(text);
+  return d;
+}
+
+/* ---------- mobil asistan paneli ----------
+ * Panel telefonda ekranın altına sabit; kapalıyken sadece 46px'lik tutamak
+ * görünür. Üç iş yapıyor:
+ *
+ * 1. Aç/kapa. Dokunma, hem de tutamağı yukarı/aşağı sürükleme.
+ * 2. Kapalıyken son cevabın ilk satırını gösterme. Panelin balon yerine
+ *    seçilme sebebi tam olarak bu: soruyu sorup paneli kapatabiliyorsun,
+ *    cevap gelince şeritte beliriyor, tabloyu izlemeye devam ediyorsun.
+ * 3. Klavye takibi. `interactive-widget=resizes-content` desteklenirse CSS
+ *    halleder; desteklenmezse visualViewport ile panelin alt kenarını
+ *    klavyenin üstüne çekiyoruz (Android telefon'da ilk denenen durum).
+ */
+const SHEET = { open: false, preview: "" };
+
+function sheetSet(open){
+  SHEET.open = !!open;
+  const chat = $("#chat");
+  if (!chat) return;
+  chat.classList.toggle("collapsed", !open);
+  const grip = $("#grip");
+  if (grip) grip.setAttribute("aria-expanded", String(!!open));
+  // Açılınca sona kaydır: en yeni mesaj görünsün.
+  if (open) {
+    requestAnimationFrame(() => {
+      const m = $("#msgs");
+      if (m) m.scrollTop = m.scrollHeight;
+    });
+  }
+}
+
+function sheetPreview(text){
+  const el = $("#gprev");
+  if (!el) return;
+  // F1.plain: şerit textContent ile yazılıyor, yani `**` işaretleri
+  // temizlenmezse ham görünür. Biçimlendirici ikisini de bilmeli.
+  SHEET.preview = F1.plain(text || "");
+  el.textContent = SHEET.preview
+    ? SHEET.preview.replace(/\s+/g, " ").trim().slice(0, 120)
+    : "soru sor · cevap burada görünür";
+}
+
+/* Klavye açıkken panelin görünür kalması.
+ *
+ * iOS/Samsung klavyesi, `interactive-widget` desteklenmediğinde layout
+ * viewport'u DEĞİŞTİRMEZ; sadece visualViewport küçülür. `bottom:0` layout
+ * viewport'a göre hesaplandığı için panel klavyenin arkasında kalır. Burada
+ * visualViewport'un yüksekliğini ölçüp paneli o kadar yukarı itiyoruz.
+ *
+ * `offsetTop` de ekleniyor: iOS klavye açıkken sayfayı kaydırabiliyor, o
+ * zaman visualViewport pencerenin içinde kaymış olur. */
+function bindKeyboard(){
+  const vv = window.visualViewport;
+  const chat = $("#chat");
+  if (!vv || !chat) return;
+  const apply = () => {
+    // Yalnız telefonda: masaüstünde panel sabit değil, dokunmamalıyız.
+    if (!window.matchMedia("(max-width: 640px)").matches) {
+      chat.style.bottom = "";
+      chat.style.height = "";
+      return;
+    }
+    const hidden = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    const kb = hidden > 80;          // 80px eşiği: adres çubuğu dalgalanması
+    chat.style.bottom = kb ? hidden + "px" : "";
+    // Klavye açıkken panel BÜYÜR: görünür alanın tamamını kaplar, çünkü
+    // yazarken cevabı da görmek istiyorsun. 62dvh sabit kalsaydı klavye
+    // ~365px alınca mesaj listesine 100px bile kalmazdı (ölçüldü).
+    // Kapanınca CSS'teki 62dvh'ye döner.
+    chat.style.height = kb ? vv.height + "px" : "";
+  };
+  vv.addEventListener("resize", apply);
+  vv.addEventListener("scroll", apply);
+  apply();
+}
+
+/* Tutamak: dokun = aç/kapa, sürükle = yön belirle.
+ *
+ * Sürekli takip (parmağı izleyen animasyon) bilerek yok: panelin içinde
+ * kaydırılabilir bir mesaj listesi var, iki kaydırma bağlamını birleştirmek
+ * kilitlenme ve yanlış panele dokunma üretiyor. Bunun yerine eşik: parmak
+ * 24px'ten fazla aşağı gittiyse kapat, yukarı gittiyse aç; aksi hâlde dokunma
+ * sayılır. `touch-action:manipulation` CSS'te zaten seçimi engelliyor. */
+(function bindGripGesture(){
+  const grip = $("#grip");
+  if (!grip) return;
+  let y0 = null, moved = false;
+  // Dokunma: masaüstünde ve erişilebilirlik araçlarında tek yol bu.
+  grip.addEventListener("click", () => sheetSet(!SHEET.open));
+  grip.addEventListener("touchstart", (e) => {
+    y0 = e.touches[0].clientY; moved = false;
+  }, { passive: true });
+  grip.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    if (Math.abs(e.touches[0].clientY - y0) > 24) moved = true;
+  }, { passive: true });
+  grip.addEventListener("touchend", (e) => {
+    if (y0 == null) return;
+    const dy = (e.changedTouches[0]?.clientY ?? y0) - y0;
+    y0 = null;
+    if (!moved) return;            // dokunma: click zaten hallediyor
+    e.preventDefault();            // click'in ikinci kez tetiklenmesini engelle
+    sheetSet(dy < 0);              // yukarı = aç, aşağı = kapat
+  });
+})();
+
+function restoreTranscript(){
+  const box = $("#msgs");
+  box.innerHTML = "";
+  $("#chatsub").textContent = chatLabel();
+  if(!hist.length){
+    const hello = VIEW.mode === "archive"
+      ? "Bu yarışın kayıtlı sohbeti boş. Geçmiş yarışın verisiyle soru sorabilirsin."
+      : "Merhaba. Canlı veriyle soru sor — her yarışın sohbeti ayrı ayrı sunucuda saklanır.";
+    box.innerHTML = `<div class="m bot" style="color:#8b98a9">${esc(hello)}</div>`;
+    return;
+  }
+  for(const m of hist) addMsg(m.role === "user" ? "user" : (m.err ? "err" : "bot"), m.text, m.meta || "");
+  box.scrollTop = box.scrollHeight;
+  // Sayfa açılışında tutamak boş kalmasın: son asistan mesajı orada dursun,
+  // yoksa "cevap var mı" sorusunun cevabı için paneli açmak gerekirdi.
+  const lastBot = [...hist].reverse().find(m => m.role !== "user");
+  if (lastBot) sheetPreview(lastBot.text);
+}
+async function loadChat(){
+  let msgs = [];
+  try{
+    const d = await apiJSON(`api/chat?race=${encodeURIComponent(chatTarget())}`);
+    msgs = d.messages || [];
+  }catch(e){ console.warn("chat load", e); }
+  hist = msgs.map(m => ({role:m.role, text:m.text, meta:m.meta || "", err:!!m.err}));
+  restoreTranscript();
+}
+
+async function send(){
+  if(busy) return;
+  const q = $("#q").value.trim();
+  if(!q) return;
+  busy = true; $("#send").disabled = true; $("#q").value = "";
+  addMsg("user", q);
+  hist.push({role:"user", text:q, meta:""});
+  const ph = addMsg("bot", "");
+  ph.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+  const t0 = performance.now();
+  const payload = {message:q, reasoning:currentLevel(), race:chatTarget(),
+    // Kapsam çiplerden: hangi seansların bağlama gireceğini kullanıcı seçiyor.
+    scope: (window.__scopePicked ? window.__scopePicked() : [])};
+  if(VIEW.mode === "archive" && VIEW.lap != null) payload.lap = VIEW.lap;
+
+  /* Akış: cevap yazılırken görünür, ve bağlantı hiç sessiz kalmaz. Sessiz kalan
+     istek bir vekilin ~100 sn zaman aşımına takılıp 524/HTML olarak dönüyordu
+     -- cevap üretilmiş (ve ödenmiş) olduğu hâlde kullanıcıya ulaşmıyordu.
+     Bkz. shell.js chatStream ve server.py /api/chat/stream. */
+  let acc = "";          // biriken cevap
+  let scopeNote = "";    // kapsam satırı (scope olayında gelir)
+  let done = null;
+  let failure = null;
+  let thinkingNote = "";
+
+  function paint(){
+    // Her delta'da yeniden çiz. fmt() kaçırma + markdown yapıyor; yarım kalmış
+    // bir `**` dizisi de sorunsuz görünür.
+    ph.innerHTML = (scopeNote ? `<span class="scopenote">${esc(scopeNote)}</span>` : "")
+      + (acc ? fmt(acc) : '<span class="typing"><i></i><i></i><i></i></span>')
+      + (thinkingNote ? `<span class="meta">${esc(thinkingNote)}</span>` : "");
+    $("#msgs").scrollTop = $("#msgs").scrollHeight;
+  }
+
+  try{
+    await F1.chatStream("api/chat/stream", payload, {
+      onScope(ev){ if(ev.note){ scopeNote = ev.note; paint(); } },
+      onThinking(ev){
+        // Düşünme metni GÖSTERİLMEZ (doğrulanmamış taslak), ama beklediğimizi
+        // ve ne kadar sürdüğünü söyleriz -- yoksa ekran donmuş görünür.
+        if(ev.type === "thinking"){
+          thinkingNote = "düşünüyor… (" + (ev.chars || 0) + " karakter)";
+          paint();
+        }
+      },
+      onDelta(text){ acc += text; thinkingNote = ""; paint(); },
+      onDone(ev){ done = ev; },
+      onError(msg){ failure = msg; },
+    });
+
+    const secs = ((performance.now()-t0)/1000).toFixed(1);
+    if(failure){
+      ph.className = "m err";
+      ph.innerHTML = (scopeNote ? `<span class="scopenote">${esc(scopeNote)}</span>` : "")
+        + esc(failure);
+      hist.push({role:"assistant", text:failure, meta:"", err:true});
+      return;
+    }
+    const d = done || {};
+    const ans = d.answer || acc || "(cevap yok)";
+    const m = d.meta || {};
+    const bits = [new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"}), secs+"s"];
+    bits.push(...usageBits(m));
+    if(m.learned || (m.prefs && m.prefs !== (window.__lastPrefs||""))){ renderPrefs(m.prefs || ""); window.__lastPrefs = m.prefs; }
+    if(m.prefs) bits.push("öğrendim: "+(m.prefs || ""));
+    if(d.saved === false) bits.push("kaydedilmedi");
+    const metaTxt = bits.join(" · ");
+    const isErr = String(ans).startsWith("LLM");
+    ph.className = "m " + (isErr ? "err" : "bot");
+    const cut = cutNote(m, ans);
+    ph.innerHTML = (scopeNote ? `<span class="scopenote">${esc(scopeNote)}</span>` : "")
+      + fmt(ans) + `<span class="meta">${esc(metaTxt)}</span>` + cut;
+    hist.push({role:"assistant", text:ans, meta:metaTxt, err:isErr});
+    loadUsage();
+  }catch(e){
+    // Akış hiç açılamadı (ağ, vekil, tarayıcı desteği). Yarıda kalan metin varsa
+    // onu koruruz: kullanıcı en azından geleni görsün.
+    ph.className = "m err";
+    ph.innerHTML = (acc ? fmt(acc) + `<span class="meta">akış kesildi</span>` : "")
+      + "İstek hatası: " + esc(String(e && e.message || e));
+    hist.push({role:"assistant", text:"İstek hatası: "+e, meta:"", err:true});
+  }finally{
+    busy = false; $("#send").disabled = false; $("#msgs").scrollTop = $("#msgs").scrollHeight;
+  }
+}
+
+/* Sektör kaynağı düğmesi. Otomatikten (null) elle seçime geçer; iki kez
+   tıklamak otomatiğe döndürmez -- tek yol bu olsaydı "neden değişmiyor"
+   durumu doğardı, o yüzden seçim açıkça yazılıyor. */
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest && e.target.closest("#sectoggle");
+  if(!btn) return;
+  const cur = sectorUse(SNAP || {});
+  const next = cur === "best" ? "last" : "best";
+  sectorSrc = next;
+  localStorage.setItem(SECT_KEY, next);
+  if(SNAP) render(SNAP, VIEW && VIEW.mode === "archive");
+});
+
+async function clearChat(){
+  if(hist.length && !confirm("Bu yarışın sohbet geçmişi sunucudan silinsin mi? (geri alınamaz)")) return;
+  try{ await fetch(`api/chat?race=${encodeURIComponent(chatTarget())}`, {method:"DELETE"}); }
+  catch(e){ console.warn(e); }
+  hist = [];
+  await loadChat();
+}
+
+/* ---------- race archive browsing ---------- */
+async function loadRaces(){
+  try{
+    const d = await apiJSON("api/races");
+    const sel = $("#races");
+    const cur = VIEW.mode === "archive" ? String(VIEW.id) : "live";
+    sel.innerHTML = [`<option value="live">● Canlı</option>`]
+      .concat((d.races||[]).map(r =>
+        `<option value="${r.id}">${esc((r.live ? "● " : "") + raceLabel(r))}</option>`)).join("");
+    sel.value = [...sel.options].some(o => o.value === cur) ? cur : "live";
+    if(d.current){
+      const changed = LIVE_RACE_ID && d.current !== LIVE_RACE_ID;
+      LIVE_RACE_ID = d.current;
+      if(changed && VIEW.mode === "live") await loadChat();
+    }
+  }catch(e){ console.warn("races", e); }
+}
+
+function setArchiveSnap(s){
+  VIEW.lap = s.lap ?? null;
+  const sl = $("#rlap");
+  if(s.lap != null) sl.value = s.lap;
+  $("#rlapval").textContent = `tur ${s.lap ?? "?"}/${s.total ?? "?"}`;
+  render(s, true);
+}
+
+async function openArchive(id){
+  try{
+    const d = await apiJSON(`api/races/${id}`);
+    if(!d.snapshot){ alert("Bu yarış için kayıtlı tur yok."); return; }
+    const laps = (d.laps||[]).filter(x => x != null && x > 0);
+    VIEW = {mode:"archive", id:Number(id), lap:null, laps, race:d.race};
+    const sl = $("#rlap");
+    sl.min = laps.length ? laps[0] : 0;
+    sl.max = laps.length ? laps[laps.length-1] : 0;
+    $("#rname").textContent = raceLabel(d.race || {});
+    $("#replaybar").hidden = false;
+    setArchiveSnap(d.snapshot);
+    await loadChat();
+  }catch(e){ console.error(e); alert("Arşiv yüklenemedi: " + e); }
+}
+
+async function openLive(){
+  VIEW = {mode:"live", id:null, lap:null, laps:[], race:null};
+  $("#replaybar").hidden = true;
+  if(LIVE) render(LIVE, false);
+  await loadChat();
+}
+
+let lapTimer = null;
+$("#races").addEventListener("change", e => {
+  const v = e.target.value;
+  if(v === "live") openLive(); else openArchive(v);
+});
+$("#rtolive").addEventListener("click", () => { $("#races").value = "live"; openLive(); });
+$("#rlap").addEventListener("input", () => {
+  const lap = Number($("#rlap").value);
+  $("#rlapval").textContent = `tur ${lap}/${$("#rlap").max}`;
+  clearTimeout(lapTimer);
+  lapTimer = setTimeout(async () => {
+    if(VIEW.mode !== "archive") return;
+    try{
+      const s = await apiJSON(`api/races/${VIEW.id}/snapshot?lap=${lap}`);
+      setArchiveSnap(s);
+    }catch(e){ console.warn(e); }
+  }, 130);
+});
+
+/* ---------- one-shot migration of the old browser-local transcript ---------- */
+const LEGACY_KEY = "f1dash.chat.v1";
+const MIGRATED_KEY = "f1dash.chat.migrated.v1";
+async function migrateLocalChat(){
+  if(localStorage.getItem(MIGRATED_KEY)) return;
+  let arr = [];
+  try{ const raw = localStorage.getItem(LEGACY_KEY); arr = raw ? JSON.parse(raw) : []; }catch(e){ arr = []; }
+  if(Array.isArray(arr) && arr.length){
+    try{
+      await apiJSON("api/chat/import", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({race:"live", messages:arr})});
+    }catch(e){ return; }   // keep the local copy and retry next load
+  }
+  localStorage.setItem(MIGRATED_KEY, "1");
+  try{ localStorage.removeItem(LEGACY_KEY); }catch(e){}
+}
+
+/* ---------- wiring ---------- */
+$("#f").addEventListener("submit", e => { e.preventDefault(); send(); });
+$("#q").addEventListener("keydown", e => {
+  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+});
+$("#clear").addEventListener("click", clearChat);
+
+const es = new EventSource("api/stream");
+es.onmessage = ev => {
+  try{
+    const s = JSON.parse(ev.data);
+    LIVE = s;
+    if(s.race_id) LIVE_RACE_ID = s.race_id;
+    if(VIEW.mode === "live") render(s, false);
+  }catch(e){ console.error(e); }
+};
+es.onerror = () => { $("#stamp").textContent = "SSE koptu, yeniden bağlanıyor…"; pullSnapshot(); };
+
+/* Yedek yol: akış kurulamadığında (çevrimdışı, SSE'yi kesen bir vekil) son
+   anlık görüntüyü `/api/state`'ten al. Bu uç service worker tarafından
+   önbelleğe alınıyor, yani şebeke yokken de cevap veriyor -- ve cevap
+   gerçekten ESKİ olduğu için sayfa kendi damgasını ve "çevrimdışı" rozetini
+   gösteriyor (uydurulmuş bir "şimdi" değil).
+
+   Önceden sayfa yalnız EventSource'a bağlıydı: stream açılmayınca ekranda
+   sonsuza kadar "veri bekleniyor..." kalıyordu, oysa önbellekte taze bir kare
+   vardı. Aynı çağrı açılışta da yapılıyor, böylece akışın ilk olayını
+   beklemeden tablo doluyor. */
+let _pullBusy = false;
+async function pullSnapshot(){
+  if(_pullBusy) return;
+  _pullBusy = true;
+  try{
+    const s = await apiJSON("api/state");
+    if(!s || !Array.isArray(s.rows) || !s.rows.length) return;
+    // Akış bu arada yetiştiyse onun karesi daha yeni: ezme. `updated` ISO ve
+    // damgalı, `server_time` ise gün içi saat ("20:43:47") -- gece yarısını
+    // geçen bir oturumda dize karşılaştırması yanlış tarafı seçerdi.
+    if(LIVE && (LIVE.updated || "") > (s.updated || "")) return;
+    LIVE = s;
+    if(s.race_id) LIVE_RACE_ID = s.race_id;
+    if(VIEW.mode === "live") render(s, false);
+  }catch(e){ /* çevrimdışı ve önbellekte de yok: rozet zaten durumu söylüyor */ }
+  finally{ _pullBusy = false; }
+}
+
+(async function init(){
+  hoistProv();
+  bindKeyboard();
+  // Telefon/masaüstü geçişinde paneli doğru yere koy.
+  window.addEventListener("resize", () => { clearTimeout(window._hpT); window._hpT = setTimeout(hoistProv, 150); });
+  pullSnapshot();   // akışın ilk olayını bekleme; önbellekten de gelebilir
+  await migrateLocalChat();
+  await loadPrefs();
+  // No local choice yet? inherit the saved reasoning level instead of the default.
+  if(!localStorage.getItem(RKEY)){
+    try{
+      const p = await apiJSON("api/prefs");
+      if(p.prefs && p.prefs.reasoning){ rsel.value = p.prefs.reasoning; syncLevelUI(); }
+    }catch(e){ console.warn("prefs", e); }
+  }
+  await loadRaces();
+  await loadChat();
+  loadUsage();
+  setInterval(loadRaces, 60000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# F1 Agentic Analyst — çalışma zamanı bağımlılıkları
+#
+# Üçüncü taraf yalnız bunlar: geri kalan her şey Python standart kütüphanesi
+# (http.server, urllib, sqlite3, asyncio). Grafik, tablo ve biçimlendirme
+# tarayıcıda; sunucu tarafında bir JS/paket zinciri yok.
+#
+#   python3 -m venv .venv && . .venv/bin/activate
+#   pip install -r requirements.txt
+#   ./run.sh
+# Sürümler bu depoda test edilen aralıklardır (geliştirme: 0.162 / 0.54 / 17.3).
+fastapi>=0.110,<1
+uvicorn>=0.27,<1
+websockets>=12,<20

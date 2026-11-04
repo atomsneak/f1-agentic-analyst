@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0a0c10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="F1 Hafta">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" sizes="32x32" href="static/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="static/icons/apple-touch-icon-180.png">
+
+<title>F1 Agentic Analyst — Hafta Sonu</title>
+<link rel="stylesheet" href="static/theme.css">
+<style>
+.legal{color:var(--faint);font-size:10px;line-height:1.5;margin:6px 0 0;color:#4a5563}
+
+  /* Page-specific only. Tokens, shell, nav, .card, .strip and .notice all come
+     from /static/theme.css; this file must not redefine --bg/--panel. */
+
+  main { flex: 1; padding: 14px 16px 30px; max-width: 1180px; width: 100%; margin: 0 auto; }
+
+  /* --- weekend header --- */
+  .whead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .whead h1 { margin: 0; font-family: var(--font-head); font-size: 20px; letter-spacing: -.2px; font-weight: 700; }
+  .whead .fit { font-size: 12px; color: var(--dim); }
+  .whead .round { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+  .whead .pills { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .3px; color: var(--dim);
+    background: var(--panel3); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 3px 9px; }
+  .pill.live { color: #ffd9d6; border-color: #5c1712; background: #2a0f0c; }
+
+  /* --- session card grid ---
+     auto-fit + minmax: one column on a narrow phone, two from ~420px, five on a
+     desktop. A fixed 5-column grid was the first attempt and it produced 60px
+     cards on a 390px screen, below the 44px touch minimum. */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 10px; }
+
+  .scard {
+    display: flex; flex-direction: column; gap: 7px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: 12px 13px; min-height: 116px; position: relative;
+    text-decoration: none; color: inherit;
+    transition: border-color .12s ease, background .12s ease;
+  }
+  a.scard:hover { border-color: #37506b; background: #161c26; }
+  a.scard:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* Label and badge share one row via a grid, NOT an absolutely positioned badge
+     with a hard-coded `padding-right`.
+   *
+   * That was the previous shape and it failed twice on a real phone (screenshots
+   * of Mexico City / United States): 58px was not enough for "ANTRENMAN 1", so the
+   * label rendered as "ANTRENM…", and it was not enough for the wider "KAYIT YOK"
+   * badge either, so the badge sat ON TOP of the label ("ANTRENM…KAYIT YOK"). A
+   * pixel budget cannot be right for every label/badge pair; a grid column sized
+   * by its own content can. The label wraps to a second line instead of being
+   * cut, which is the honest failure mode: a wrapped word is still readable. */
+  .scard .head { display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px; align-items: start; }
+  .scard .k { font-family: var(--font-head); font-size: 11px; letter-spacing: .7px;
+    line-height: 1.25; text-transform: uppercase; color: var(--dim);
+    overflow-wrap: break-word; hyphens: none; }
+  .scard .badge-state { position: static; white-space: nowrap; }
+  .scard .hl { font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 17px; font-weight: 700; letter-spacing: -.4px; margin-top: 1px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scard .sub { font-size: 11px; color: var(--faint); line-height: 1.5; margin-top: auto; }
+
+  /* State is carried by the card's own border and a word, not only by colour:
+     colour alone is invisible to a colour-blind reader and in bright sunlight. */
+  .scard[data-state="done"] .k { color: var(--txt); }
+  .scard[data-state="live"] { border-color: var(--accent); background: #180f11; box-shadow: 0 0 0 1px #3a1512 inset; }
+  .scard[data-state="live"] .k { color: #ffb3ae; }
+  .scard[data-state="scheduled"], .scard[data-state="missing"],
+  .scard[data-state="empty"], .scard[data-state="unknown"] { opacity: .62; }
+  /* "Belirsiz" is not a normal state and must not look like one: a dashed border
+     says "we do not know" instead of borrowing the calm look of a finished card. */
+  .scard[data-state="unknown"] { border-style: dashed; }
+  /* `pointer-events:none` on a div is not enough to make it inert for a keyboard;
+     these states are rendered as <div>, never as <a>, so there is nothing to tab
+     to and nothing to click. See renderCards(). */
+
+  .badge-state { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .4px;
+    text-transform: uppercase; border-radius: var(--r-sm); padding: 2px 6px;
+    border: 1px solid var(--line); color: var(--dim); }
+  .badge-state.done { color: #8fd39b; border-color: #2c4436; }
+  .badge-state.live { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+  .badge-state.scheduled, .badge-state.missing, .badge-state.empty { color: var(--faint); }
+  .dotlive { width: 6px; height: 6px; border-radius: 50%; background: #fff; display: inline-block;
+    animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+  /* Respect the OS setting: a blinking dot is decoration, not information --
+     the word "canlı" is already on the card. */
+  @media (prefers-reduced-motion: reduce) { .dotlive { animation: none; } }
+
+  /* --- weekend list (desktop sidebar) --- */
+  .layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 12px; align-items: start; }
+  #wlist .body { padding: 0; max-height: 62vh; overflow: auto; }
+  .wrow { display: block; padding: 8px 11px; border-bottom: 1px solid var(--line-soft);
+    text-decoration: none; color: inherit; font-size: 12.5px; }
+  .wrow:hover { background: #161c26; }
+  .wrow[aria-current="true"] { background: #1b2431; box-shadow: inset 2px 0 0 var(--accent); }
+  .wrow .m { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wrow .d { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); margin-top: 2px;
+    display: flex; gap: 6px; align-items: center; }
+  .wrow .live-tag { color: #ffb3ae; }
+
+  .empty-box { padding: 26px 14px; text-align: center; color: var(--dim); font-size: 12.5px; line-height: 1.6; }
+  .empty-box b { color: var(--amber); }
+
+  footer { color: var(--faint); font-size: 11px; line-height: 1.6; padding: 14px 2px 0;
+    border-top: 1px solid var(--line-soft); margin-top: 16px; }
+  footer a { color: var(--dim); }
+
+  @media (max-width: 760px) {
+    main { padding: 10px 10px 22px; }
+    /* One column: the picker is in the header on a phone, and a 232px sidebar
+       next to a card grid leaves ~140px per card at 390px. */
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    #wsidebar { display: none; }
+    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .scard { min-height: 104px; padding: 10px 11px; }
+    .scard .hl { font-size: 15.5px; }
+    .whead h1 { font-size: 17px; }
+    .whead .pills { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="shell">
+  <div class="logo"><span class="mark" aria-hidden="true">◔</span> <b>HAFTA SONU</b></div>
+  <nav class="nav" aria-label="Yüzeyler">
+    <a href="http://127.0.0.1:8103/" data-port="8103" aria-current="page">Hafta</a>
+    <a href="http://127.0.0.1:8099/" data-port="8099">Canlı</a>
+    <a href="http://127.0.0.1:8100/" data-port="8100" title="Geçmiş seanslar: grafikler, tur tablosu, sohbet">Arşiv</a>
+    <a href="http://127.0.0.1:8101/" data-port="8101" title="Sezonun resmî sürücü ve marka sıralaması">Puan Durumu</a>
+  </nav>
+  <div class="shell-end">
+    <label class="pick" title="Hafta sonu seç">
+      <span>hafta sonu</span>
+      <select id="weekend"></select>
+    </label>
+  </div>
+</header>
+
+<div class="strip" id="strip">
+  <span>seans: <b id="nsessions">—</b></span>
+  <span class="sep">·</span>
+  <span>kaynak: <b id="srcname">arşiv</b></span>
+  <span class="push" id="shapebadge">—</span>
+</div>
+
+<main>
+  <div id="banners"></div>
+
+  <div class="whead">
+    <h1 id="wtitle">Yükleniyor…</h1>
+    <span class="fit" id="wdate"></span>
+    <span class="round" id="wround"></span>
+    <span class="pills" id="wpills"></span>
+  </div>
+
+  <div class="layout">
+    <section class="card" id="wsidebar">
+      <h2>Hafta sonları <span class="hint" id="wcount"></span></h2>
+      <div class="body" id="wlist"><div class="empty-box">yükleniyor…</div></div>
+    </section>
+
+    <section>
+      <div class="cards" id="cards"></div>
+      <footer>
+        Bir kart açılabilir olduğunda o seansın kaydına götürür; canlı seans canlı
+        tabloya gider. <b>Kayıt yok</b> yazan bir kart, o seansın koşulmadığı
+        anlamına gelmez — yalnızca bu arşivde kaydı olmadığı anlamına gelir.
+        <p class="legal">Resmî olmayan, bağımsız bir proje. Formula 1, FIA veya Formula One Management ile ilişkili değildir. F1, FORMULA 1 ve ilgili işaretler Formula One Licensing B.V.'nin ticari markalarıdır. Veri kaynakları kendi lisanslarına tabidir (bkz. README).</p>
+      </footer>
+    </section>
+  </div>
+</main>
+
+<script src="static/shell.js"></script>
+<script>
+/* ---------- welcome: weekend list -> session cards ----------
+ *
+ * State lives in one object. Everything rendered below is a pure function of
+ * (weekends, overview), so a reload of one weekend cannot leave a stale card
+ * from the previous one on screen.
+ */
+const S = { weekends: [], current: null, ov: null, ports: {live:"8099", archive:"8100", standings:"8101"} };
+
+const $ = s => document.querySelector(s);
+const esc = t => F1.esc(t);
+
+/* Where a link to another surface goes, with an optional query appended.
+ * F1.surfaceHref is the one place that knows how a surface's address is
+ * shaped, so this page never hard-codes a URL. */
+function surface(port, query){
+  const base = (F1.surfaceHref || F1.surfaceUrl)(port);
+  return query ? base + query : base;
+}
+
+/* A session is openable only when there is a stored record of it. The three
+ * non-openable states are rendered as <div>, not as a dead <a>: a link that
+ * does nothing when tapped reads as a broken page. */
+function cardFor(c){
+  const live = c.state === "live";
+  const openable = !!c.rid && (live || c.state === "done" || c.state === "empty");
+  const tag = openable ? "a" : "div";
+  const href = live ? surface(S.ports.live)
+             : (c.rid ? surface(S.ports.archive, "?rid=" + c.rid) : "");
+  const attrs = openable
+      ? ` href="${esc(href)}" title="${esc(live ? "Canlı tabloya git" : "Bu seansın arşiv kaydını aç")}"`
+      : ` aria-disabled="true"`;
+  /* Short badge words on purpose: the full state label ("tamamlandı") is 11
+   * characters and cannot share a line with "Antrenman 1" in a 168 px card. The
+   * long form stays in the tooltip and in the sub line. */
+  /* `unknown` gets its own word. It used to fall through to "bitti" via the
+   * state machine's default branch, which is how a race that had not run was
+   * labelled as finished. The long form ("belirsiz") stays in the tooltip. */
+  const SHORT = { done: "bitti", live: "LIVE", scheduled: "başlamadı",
+                  missing: "kayıt yok", empty: "veri yok", unknown: "belirsiz" };
+  const badge = live
+      ? `<span class="badge-state live" title="canlı seans"><span class="dotlive" aria-hidden="true"></span> LIVE</span>`
+      : `<span class="badge-state ${esc(c.state)}" title="${esc(c.state_label)}">${esc(SHORT[c.state] || c.state_label)}</span>`;
+
+  const bits = [];
+  /* "az tur" belongs on this line, not on the headline: the headline is a single
+   * number read at a glance and a suffix there made it ellipsis in a narrow card.
+   * The fact still has to be visible -- one lap per driver cannot establish a
+   * session best -- so it is said in words where there is room. */
+  /* "tur kaydı", not "tur": `laps` is the number of lap_times ROWS, which for a
+   * race is about twenty per lap (one per driver). Calling 1163 of them "1163
+   * tur" would be a wrong number in the most visible place on the page. */
+  if (c.state === "live" && c.laps) bits.push(c.laps + " tur kaydı");
+  else if (c.state === "done") bits.push(c.laps ? c.laps + " tur kaydı" : c.frames + " çerçeve");
+  /* Completion is reported in words, next to the number. "bitti" alone was wrong
+   * twice on real data: the Mexico race had not started (stray frames) and the
+   * Australian GP had finished while our record stopped at lap 57/58. The badge
+   * says what happened; this line says how complete the record is. */
+  if (c.phase === "not_started" && c.state === "scheduled") {
+    bits.push(c.start_date ? "başlamadı · " + F1.whenText(c.start_date) : "başlamadı");
+  } else if (c.event_over && !c.record_complete && c.total && c.last_lap != null) {
+    bits.push("kayıt " + c.last_lap + "/" + c.total + "'te kesiliyor");
+  } else if (c.phase === "finished" && c.total && c.last_lap != null && c.record_complete) {
+    bits.push("tam (" + c.last_lap + "/" + c.total + ")");
+  }
+  if (c.thin && c.best && (c.state === "done" || c.state === "live")) bits.push("az tur: tempo değil");
+  /* The start date is already on the "başlamadı" line above; repeating it here
+     produced "başlamadı · 2026-11-01 14:00:00 · 2026-11-01 14:00:00" on a real
+     card. Each state contributes its reason exactly once. */
+  if (c.state === "missing") bits.push("bu hafta sonunda kayıt yok");
+  else if (c.state === "empty" && c.phase !== "not_started") bits.push("kayıt açılmış, veri yok");
+  if (c.chat) bits.push(c.chat + " mesaj");
+
+  return `<${tag} class="scard" data-state="${esc(c.state)}" data-kind="${esc(c.kind)}"${attrs}>
+    <div class="head"><span class="k">${esc(c.label)}</span>${badge}</div>
+    <div class="hl">${c.headline ? esc(c.headline) : "&nbsp;"}</div>
+    <div class="sub">${esc(bits.join(" · "))}</div>
+  </${tag}>`;
+}
+
+function renderCards(ov){
+  const cards = ov.cards || [];
+  $("#cards").innerHTML = cards.map(cardFor).join("");
+  $("#nsessions").textContent = cards.filter(c => c.state === "done" || c.state === "live").length
+      + " / " + cards.length;
+  $("#wtitle").textContent = (ov.meeting || "—") + (ov.year ? " " + ov.year : "");
+  $("#wdate").textContent = ov.start_date ? F1.whenText(ov.start_date) : "";
+  $("#wround").textContent = ov.round ? "tur " + ov.round : "";
+
+  const pills = [];
+  if (ov.live) {
+    const c = cards.find(x => x.kind === ov.live);
+    pills.push(`<span class="pill live">● canlı: ${esc(c ? c.label : ov.live)}</span>`);
+  }
+  if (ov.missing && ov.missing.length) {
+    pills.push(`<span class="pill">kayıt yok: ${esc(ov.missing.join(", "))}</span>`);
+  }
+  $("#wpills").innerHTML = pills.join("");
+
+  /* Provenance strip. `shape_source` is the honest bit: 'default' means the
+   * sprint question could not be answered from the calendar, so the five-card
+   * shape is an assumption and the page says so instead of presenting it as a
+   * schedule fact. */
+  const shape = ov.shape_source === "sessions" ? "sprint haftası (kayıttan)"
+      : ov.shape_source === "calendar" ? "sprint haftası (takvimden)"
+      : "normal hafta sonu varsayımı";
+  $("#shapebadge").textContent = shape;
+
+  const banners = [];
+  /* The sprint assumption is ALWAYS stated, but in the strip badge, not as a
+   * banner: it is true of every weekend whose sprint flag we do not hold, so a
+   * banner would repeat on every page load and turn into wallpaper nobody reads.
+   * The badge keeps the fact visible next to the other provenance text. */
+  $("#shapebadge").title = ov.shape_source === "default"
+    ? "Sprint bayrağı bu sezon için kayıtlı değil; kartlar normal hafta sonu düzenine "
+      + "göre çizildi. Sprint seansı kaydı varsa otomatik olarak sprint düzenine geçer."
+    : "Seans düzeni " + (ov.shape_source === "sessions" ? "kayıtlı sprint seanslarından"
+        : "takvimdeki sprint turundan") + " belirlendi.";
+  if (ov.missing && ov.missing.length) {
+    banners.push(`<div class="notice"><span class="ico">!</span><span>
+      <b>${esc(ov.missing.join(", "))}</b> için kayıt yok. Bu, o seansın koşulmadığı
+      anlamına <b>gelmez</b> — yakalama kapalıydı ya da henüz yapılmadı olabilir.</span></div>`);
+  }
+  $("#banners").innerHTML = banners.join("");
+}
+
+function renderList(){
+  const rows = S.weekends.map(w => {
+    const live = w.live_kind ? `<span class="live-tag">● canlı</span>` : "";
+    return `<a class="wrow" href="#${esc(w.key)}" data-key="${esc(w.key)}"
+       aria-current="${w.key === (S.ov && S.ov.key) ? "true" : "false"}">
+      <div class="m">${esc(w.meeting || "—")}</div>
+      <div class="d">${esc((w.start_date || "").slice(0, 10))} · ${w.n_sessions} seans ${live}</div>
+    </a>`;
+  });
+  $("#wlist").innerHTML = rows.length ? rows.join("")
+      : `<div class="empty-box">Arşivde hafta sonu yok.<br>Önce canlı yakalama çalışmalı.</div>`;
+  $("#wcount").textContent = rows.length ? rows.length + " hafta sonu" : "";
+  document.querySelectorAll("#wlist .wrow").forEach(a => {
+    a.onclick = (e) => { e.preventDefault(); open(a.getAttribute("data-key")); };
+  });
+}
+
+function renderSelect(){
+  const sel = $("#weekend");
+  sel.innerHTML = S.weekends.map(w =>
+    `<option value="${esc(w.key)}">${esc((w.start_date || "").slice(0, 10))} · ${esc(w.meeting || "")}${w.live_kind ? " ●" : ""}</option>`
+  ).join("");
+  if (S.ov) sel.value = S.ov.key;
+  sel.onchange = () => open(sel.value);
+}
+
+async function open(key){
+  const w = S.weekends.find(x => x.key === key) || S.weekends[0];
+  if (!w) return;
+  let ov;
+  try {
+    ov = await F1.fetchJSON("api/weekend/" + w.rid);
+  } catch (e) {
+    $("#banners").innerHTML = `<div class="notice danger"><span class="ico">×</span><span>
+      Seans kartları yüklenemedi: ${esc(e.message || e)}</span></div>`;
+    return;
+  }
+  if (!ov || ov.error) {
+    $("#banners").innerHTML = `<div class="notice danger"><span class="ico">×</span><span>
+      ${esc((ov && ov.error) || "veri yok")}</span></div>`;
+    return;
+  }
+  S.ov = ov;
+  if (ov.ports) S.ports = ov.ports;
+  renderSelect(); renderList(); renderCards(ov);
+  // Keep the URL shareable without adding a history entry per click.
+  history.replaceState(null, "", "#" + encodeURIComponent(ov.key));
+}
+
+async function boot(){
+  let d;
+  try {
+    d = await F1.fetchJSON("api/weekends");
+  } catch (e) {
+    $("#cards").innerHTML = `<div class="empty-box">Hafta sonu listesi alınamadı:<br>${esc(e.message || e)}</div>`;
+    return;
+  }
+  S.weekends = d.weekends || [];
+  if (d.ports) S.ports = d.ports;
+  if (!S.weekends.length) {
+    $("#wtitle").textContent = "Arşivde kayıt yok";
+    $("#cards").innerHTML = `<div class="empty-box">Hiç hafta sonu kaydı yok.<br>
+      Canlı yakalama başladığında burada kartlar görünür.</div>`;
+    return;
+  }
+  renderSelect();
+  renderList();
+
+  /* Which weekend to open first:
+   *   1. a live session's weekend (that is what the user came for),
+   *   2. the key in the URL hash (a shared/back link),
+   *   3. the newest weekend.
+   * A hash naming a weekend we do not hold is ignored rather than 404ing the
+   * page: the newest weekend is still the useful thing to show. */
+  const live = S.weekends.find(w => w.live_kind);
+  const hashed = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  const picked = live || S.weekends.find(w => w.key === hashed) || S.weekends[0];
+  await open(picked.key);
+}
+
+/* Re-render when the tab comes back: a session may have gone live while it was
+ * in the background, and a welcome page showing a stale LIVE badge is worse than
+ * one showing none. Cheap: the endpoint reads races rows only. */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  F1.fetchJSON("api/weekends").then(d => {
+    if (!d || !d.weekends) return;
+    S.weekends = d.weekends;
+    if (d.ports) S.ports = d.ports;
+    renderSelect();
+    if (S.ov) open(S.ov.key);
+  }).catch(() => {});
+});
+
+boot();
+</script>
+</body>
+</html>
