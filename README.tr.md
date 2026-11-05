@@ -71,6 +71,8 @@ tests/pwa_test.js      gerçek tarayıcıda kurulum + çevrimdışı açılış
 tools/shot.js          CDP ile ekran görüntüsü aracı
 tests/smoke_real_db.py gerçek DB kopyasıyla duman testi
 tools/backfill_openf1.py  geçmiş yarışı OpenF1 aynasından tamamla
+tools/audit_coverage.py brifing kapsam denetimi: saklanan her alan temsil ediliyor mu, eksik var mı
+tools/fix_sector_laps.py yanlış tur numarasına yazılmış sektör satırlarını onar
 data/f1dash.db         tek SQLite dosyası (WAL)
 design/pwa-icon.svg    uygulama ikonunun tek kaynağı (make_icons.py -> static/icons/)
 ```

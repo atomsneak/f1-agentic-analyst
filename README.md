@@ -72,6 +72,8 @@ tests/pwa_test.js      install + offline launch in a real browser
 tools/shot.js          screenshot tool via CDP
 tests/smoke_real_db.py smoke test against a copy of the real database
 tools/backfill_openf1.py  complete a past race from the OpenF1 mirror
+tools/audit_coverage.py briefing coverage audit: every stored field represented, nothing silently dropped
+tools/fix_sector_laps.py repair sector rows stored against the wrong lap number
 data/f1dash.db         the single SQLite file (WAL)
 design/pwa-icon.svg    single source for the app icon (make_icons.py -> static/icons/)
 ```
