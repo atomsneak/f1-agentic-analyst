@@ -149,3 +149,72 @@ class SessionBlockTest(unittest.TestCase):
 def chat_blocks(rid, kinds):
     import chat_request
     return chat_request._session_blocks(rid, kinds)
+
+
+class CardStatesReachThePromptTest(unittest.TestCase):
+    """The reported bug, end to end in the briefing the model actually reads.
+
+    Asking a chat attached to the Race session "what is qualifying's card status"
+    produced `missing` although the card API called it `done`. The fix attaches
+    the grid's own states, so the model reads a stored verdict instead of mapping
+    "not in this snapshot" onto the nearest of five words.
+    """
+
+    def _db(self):
+        import pathlib
+        import tempfile
+        import store
+        import weekend
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        old = (store.DATA_DIR, store.DB_PATH)
+        store.DATA_DIR = pathlib.Path(tmp.name)
+        store.DB_PATH = os.path.join(tmp.name, "s.db")
+        self.addCleanup(lambda: setattr(store, "DATA_DIR", old[0]))
+        self.addCleanup(lambda: setattr(store, "DB_PATH", old[1]))
+        self.addCleanup(weekend.clear_cache)
+        store.init_db()
+        weekend.clear_cache()
+
+    def _session(self, session, *, key, frames, final_status=None):
+        import store
+        rid = store.upsert_race(f"{session}-{key}", meeting="Mexico City Grand Prix",
+                                official="Mexico City Grand Prix", session=session,
+                                year=2026, start_date="2026-10-31T15:00:00",
+                                end_date="2026-10-31T15:00:00", meeting_key=key)
+        store.put_lap_times(rid, [("1", i, 80.0 + i / 10) for i in range(1, 6)])
+        for lap in range(1, frames + 1):
+            store.put_frame(rid, lap, {"rows": [{
+                "num": "1", "code": "VER", "pos": 1, "gap": "LEADER", "int": "",
+                "laps": lap, "last": 80.0, "best": 80.0, "pit": 0,
+                "tyre": "SOFT", "tyre_age": lap, "team": "Red Bull"}]})
+        if final_status:
+            with store.db() as c:
+                c.execute("UPDATE races SET final_status=?, last_seen=? WHERE id=?",
+                          (final_status, "2026-10-31T16:30:00Z", rid))
+        return rid
+
+    def test_captured_qualifying_reaches_the_briefing_as_done(self):
+        import analysis
+        import chat_request
+        import weekend
+        self._db()
+        self._session("Qualifying", key=31, frames=26, final_status="Ends")
+        race_rid = self._session("Race", key=31, frames=3, final_status="Ends")
+
+        resolved = {"scopes": ["RACE"], "want_summary": False, "cleaned": "durum?"}
+        snap, _note = chat_request.build_context(race_rid, live_snap=None,
+                                                 archived=True, resolved=resolved,
+                                                 question="durum?")
+        blocks = [b for b in (snap.get("extra_blocks") or []) if "KART DURUMLARI" in b]
+        self.assertEqual(len(blocks), 1, "kart durumları bloğu briefinge eklenmeli")
+        self.assertIn("Q (Sıralama) = done", blocks[0])
+
+        prompt = analysis.context_text(snap)
+        self.assertIn("HAFTA SONU KART DURUMLARI", prompt)
+        self.assertIn("Q (Sıralama) = done", prompt)
+        self.assertNotIn("Q (Sıralama) = missing", prompt)
+        # The card API is the single producer: whatever it says is what the prompt says.
+        q = next(c for c in weekend.overview(race_rid)["cards"] if c["kind"] == "Q")
+        self.assertIn(f"Q (Sıralama) = {q['state']}", prompt)
+

@@ -184,6 +184,21 @@ def build_context(rid: int | None, *, live_snap: dict | None, archived: bool,
         except Exception as e:
             extra.append(f"HAFTA SONU ÖZETİ üretilemedi: {type(e).__name__}: {e}"[:300])
 
+    # The OTHER sessions of this weekend, as the grid already classifies them.
+    # Without this a question about a sibling session ("was qualifying captured?")
+    # had no stored verdict in the prompt, and the model mapped "not in this
+    # snapshot" onto `missing` while the card API said `done`. Always attached,
+    # not only for summary questions: "did qualifying get captured" is exactly
+    # the question that arrives at a chat attached to the race session.
+    if rid:
+        try:
+            states = weekend.card_states_block(int(rid))
+            if states:
+                extra.append(states)
+        except Exception as e:
+            extra.append(f"HAFTA SONU KART DURUMLARI üretilemedi: "
+                         f"{type(e).__name__}: {e}"[:300])
+
     if scopes:
         blocks, missing = _session_blocks(int(rid) if rid else 0, scopes,
                                           exclude=[owner] if owner in scopes else None)

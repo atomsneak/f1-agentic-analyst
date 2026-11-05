@@ -420,6 +420,47 @@ class SummaryBlockTest(_TempDB):
         self.assertNotEqual(first, second, "new laps must invalidate the cache")
 
 
+class CardStatesBlockTest(_TempDB):
+    """The chat briefing must quote the grid's states, never re-derive its own.
+
+    Reported bug: a chat attached to the Race session called the captured
+    Qualifying session `missing`, while `/api/weekend/<rid>` called the same card
+    `done`. `missing` is the grid's word for "this weekend has no row for that
+    session"; a sibling session that is merely outside the prompt's scope must not
+    wear it.
+    """
+
+    def test_captured_sibling_session_is_done_not_missing(self):
+        old = (_now() - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.add("Qualifying", key=21, frames=26, laps=3, final_status="Ends",
+                 last_seen=old)
+        rid = self.add("Race", key=21, frames=3, laps=3, final_status="Ends",
+                       last_seen=old)
+        blk = weekend.card_states_block(rid)
+        ov = weekend.overview(rid)
+        q = next(c for c in ov["cards"] if c["kind"] == "Q")
+        self.assertEqual(q["state"], "done", "precondition: the card API says done")
+        self.assertIn("Q (Sıralama) = done", blk)
+        self.assertIn("26 kare", blk, "the capture count is the evidence for the state")
+        self.assertIn("'missing' diye etiketleme", blk,
+                      "the block must forbid mislabelling an out-of-scope session")
+        self.assertIn("bu hafta sonunda o seansın hiç kaydı yok", blk,
+                      "the meaning of `missing` must be stated, not assumed")
+        # Every card is quoted exactly as the card API computes it: one producer,
+        # so the chat and the grid cannot drift.
+        for c in ov["cards"]:
+            self.assertIn(f"{c['kind']} ({c['label']}) = {c['state']}", blk)
+
+    def test_a_session_with_no_row_still_reads_missing(self):
+        rid = self.add("Race", key=22, frames=2)
+        blk = weekend.card_states_block(rid)
+        self.assertIn("Q (Sıralama) = missing", blk,
+                      "the honest use of `missing` must survive the fix")
+
+    def test_unknown_race_returns_nothing_instead_of_raising(self):
+        self.assertEqual(weekend.card_states_block(999999), "")
+
+
 if __name__ == "__main__":
     unittest.main()
 
