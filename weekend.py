@@ -797,6 +797,54 @@ def summary_block(rid: int, *, round_no: int | None = None, max_drivers: int = 2
     return out
 
 
+# ---------- card states for the chat briefing ----------
+def card_states_block(rid: int, *, round_no: int | None = None,
+                      now: datetime | None = None) -> str:
+    """The grid's own states, as text the chat briefing can read off.
+
+    Why this exists: a chat panel is attached to ONE session's snapshot, so a
+    question about a sibling session ("was qualifying captured?") has no stored
+    answer inside the prompt. Left to map "not in this snapshot" onto the five
+    state words, the model picked the nearest one, `missing` -- while the card API
+    called the same session `done`. `missing` means "this weekend has no row for
+    that session", the exact distinction the grid was built to protect (see the
+    module docstring); a session that is merely out of the prompt's scope must not
+    wear it.
+
+    Built from `overview()` -- the same function behind `/api/weekend/{rid}` -- so
+    the chat and the grid cannot disagree by construction. Deliberately NOT
+    memoised: `live` depends on `last_seen` freshness, and a cached verdict would
+    keep claiming LIVE after the record has gone quiet.
+    """
+    try:
+        ov = overview(rid, round_no=round_no, now=now)
+    except Exception:
+        return ""
+    if not ov:
+        return ""
+
+    parts: list[str] = []
+    for c in ov.get("cards") or []:
+        bits = [f"{c['kind']} ({c['label']}) = {c['state']}"]
+        frames, laps = int(c.get("frames") or 0), int(c.get("laps") or 0)
+        if frames or laps:
+            bits.append(f"({frames} kare, {laps} tur)")
+        parts.append(" ".join(bits))
+
+    head = (f"HAFTA SONU KART DURUMLARI — {ov.get('meeting')} {ov.get('year')} "
+            f"(kaynak: hafta sonu kart API'si, GET /api/weekend/<rid>): "
+            + " · ".join(parts))
+    rule = (
+        "KURAL: bir seansın kart durumu sorulursa durumu YALNIZCA bu satırdan oku ve "
+        "aynen yaz (done/live/scheduled/empty/missing). Anlamları: done=yakalanmış ve "
+        "tamamlanmış seans, live=sürüyor, scheduled=henüz başlamadı, empty=kayıt var ama "
+        "veri yok, missing=bu hafta sonunda o seansın hiç kaydı yok. Bir seans bu "
+        "görüntünün kapsamı dışında diye onu 'missing' diye etiketleme; 'missing' yalnızca "
+        "yukarıda missing yazan seans için doğrudur. Tur süresi gibi detay bu görüntüde "
+        "yoksa 'detay arşivde var' de, ama yakalanma durumunu bu satırdan yaz.")
+    return head + "\n" + rule
+
+
 def clear_cache() -> None:
     """Drop the memoised summaries. Called by tests and after a backfill."""
     _summary_cache.clear()

@@ -1042,6 +1042,22 @@ yarış sohbetinde `@fp1 @fp2` sormak yarış temposu cevabı veriyordu çünkü
 Cevabın üstünde görünür: `Veri: Antrenman 1, Antrenman 2`. Yanlış kapsam sessizce
 yanlış cevap üretir; satır görünürse hemen fark edilir.
 
+### Kart durumları her sohbet brifinginde
+
+Bildirilen hata: Yarış seansına bağlı sohbet, yakalanmış Sıralama seansını `missing`
+diye etiketledi; oysa `/api/weekend/<rid>` aynı karta `done` diyordu. `missing`
+gridin "bu hafta sonunda o seansın hiç satırı yok" kelimesidir; yalnızca prompt'un
+kapsamı dışında kalan bir kardeş seans bu kelimeyi asla giymemeli — gridin beş
+durumu tam olarak bu ayrım için var.
+
+`weekend.card_states_block()` artık her sohbet brifingine hafta sonunun tüm
+kartlarını, `overview()`'in (yani `/api/weekend/<rid>`'in arkasındaki fonksiyonun)
+hesapladığı haliyle tek satırda ekliyor (`Q (Sıralama) = done (26 kare, 7 tur)`) ve
+modele "durumu yalnızca bu satırdan oku; `missing` yalnızca burada missing yazan
+seans için doğrudur" kuralını veriyor. Tek üretici: sohbet ile grid ayrışamaz.
+Bilinçli olarak memoize edilmez, çünkü `live` `last_seen` tazeliğine bağlıdır;
+önbelleğe alınmış bir hüküm kayıt sustuktan sonra da LIVE demeye devam ederdi.
+
 ## AI sağlayıcı seçimi
 
 **Hiçbir sağlayıcı gömülü değildir.** Depoyu klonlayan kişi kendi base URL'ini,

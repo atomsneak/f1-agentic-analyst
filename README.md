@@ -1040,6 +1040,22 @@ If the scope does not include the owning session, **the base snapshot changes to
 
 It is shown above the answer: `Veri: Antrenman 1, Antrenman 2` [Data: Practice 1, Practice 2]. Wrong scope silently produces a wrong answer; if the line is visible, it is noticed immediately.
 
+### The card states are in every chat briefing
+
+Reported: a chat attached to the Race session labelled the captured Qualifying session
+`missing`, while `/api/weekend/<rid>` called the same card `done`. `missing` is the grid's
+word for "this weekend has no row for that session", so a sibling session that is merely
+outside the prompt's scope must never wear it — that distinction is the whole reason the
+grid has five states.
+
+`weekend.card_states_block()` now adds one line to every chat briefing with all the
+weekend's cards, in the form `overview()` — the function behind `/api/weekend/<rid>` —
+computes them (`Q (Sıralama) = done (26 kare, 7 tur)`), plus the rule that the model must
+quote that state and may call a session `missing` only when the line says so. One
+producer, so chat and grid cannot disagree. Deliberately not memoised: `live` depends on
+`last_seen` freshness, and a cached verdict would keep claiming LIVE after the record
+went quiet.
+
 ## AI provider selection
 
 **No provider is built in.** Whoever clones the repo enters their own base URL, model and key; if they don't, the assistant says "sağlayıcı tanımsız" [provider undefined] and sends no request outside at all. The **⚙ AI** button in the chat header (`ai_config.py`, `static/shell.js`).

@@ -855,7 +855,12 @@ def _route_extra(snap: dict, rid: int | None, question: str) -> None:
         blk = routing.other_race_block(other) if other else None
         blocks.append(blk or routing.race_menu())
     if blocks:
-        snap["extra_blocks"] = blocks
+        # APPEND, never replace: `build_context` has already attached blocks this
+        # same question needs (the weekend summary, sibling session blocks, the
+        # card states). Assigning here silently dropped them -- a live scoped
+        # question then showed a "Veri: ..." note while the data it names was not
+        # in the prompt.
+        snap["extra_blocks"] = list(snap.get("extra_blocks") or []) + blocks
 
 
 # ---------- championship standings (for the provisional panel) ----------
